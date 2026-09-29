@@ -28,7 +28,8 @@ data class CardInfo(
     val cardType: Int = 0, 
     val wordAudio: String = "", 
     val sentenceAudio: String = "", 
-    val deckId: Long = -1L 
+    val deckId: Long = -1L, 
+    val fetchId: Long = System.nanoTime() 
 ) { 
     val isGoodGraduating: Boolean 
         get() { 

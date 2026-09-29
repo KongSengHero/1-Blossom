@@ -112,9 +112,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1081,6 +1083,10 @@ class MainActivity : ComponentActivity() {
         var completedStoriesCount by remember { mutableIntStateOf(prefs.passedStoryIds.size) } 
         var storyEnergy by remember { mutableIntStateOf(prefs.storyDailyEnergyRemaining) } 
         var jishoTargetQuery by remember { mutableStateOf("") } 
+        val deckCardsCache = remember { mutableStateMapOf<Long, CardInfo?>() } 
+        val deckStatsCache = remember { mutableStateMapOf<Long, Triple<Int, Int, Int>>() } 
+        val deckCardQueues = remember { mutableStateMapOf<Long, MutableList<CardInfo>>() } 
+        val historyStackByDeck = remember { mutableStateMapOf<Long, MutableList<Pair<CardInfo, Triple<Int, Int, Int>>>>() } 
         val coroutineScope = androidx.compose.runtime.rememberCoroutineScope() 
         
         LaunchedEffect(pagerState.currentPage) { 
@@ -1121,7 +1127,7 @@ class MainActivity : ComponentActivity() {
             Box(modifier = Modifier.fillMaxSize()) { 
                 HorizontalPager( 
                     state = pagerState, 
-                    beyondBoundsPageCount = 1, 
+                    beyondBoundsPageCount = 3, 
                     flingBehavior = PagerDefaults.flingBehavior( 
                         state = pagerState, 
                         snapAnimationSpec = spring( 
@@ -1135,7 +1141,11 @@ class MainActivity : ComponentActivity() {
                     when (tabs[page]) { 
                         BlossomTab.CARDS -> ModernSettingsScreen( 
                             padding = PaddingValues(0.dp), 
-                            onOpenAiConfig = { showAiConfigDialog = true } 
+                            onOpenAiConfig = { showAiConfigDialog = true }, 
+                            deckCardsCache = deckCardsCache, 
+                            deckStatsCache = deckStatsCache, 
+                            deckCardQueues = deckCardQueues, 
+                            historyStackByDeck = historyStackByDeck 
                         ) 
                         BlossomTab.STORIES -> com.ankilock.ui.reading.ReadingScreen( 
                             padding = PaddingValues( 
@@ -1274,7 +1284,14 @@ class MainActivity : ComponentActivity() {
     
     @OptIn(ExperimentalMaterial3Api::class) 
     @Composable
-    fun ModernSettingsScreen(padding: PaddingValues, onOpenAiConfig: () -> Unit) { 
+    fun ModernSettingsScreen( 
+        padding: PaddingValues, 
+        onOpenAiConfig: () -> Unit, 
+        deckCardsCache: SnapshotStateMap<Long, CardInfo?> = remember { mutableStateMapOf() }, 
+        deckStatsCache: SnapshotStateMap<Long, Triple<Int, Int, Int>> = remember { mutableStateMapOf() }, 
+        deckCardQueues: SnapshotStateMap<Long, MutableList<CardInfo>> = remember { mutableStateMapOf() }, 
+        historyStackByDeck: SnapshotStateMap<Long, MutableList<Pair<CardInfo, Triple<Int, Int, Int>>>> = remember { mutableStateMapOf() } 
+    ) { 
         var isEnabled by remember { mutableStateOf(prefs.isServiceEnabled) } 
         var isMusicPlayerStyle by remember { mutableStateOf(prefs.isMusicPlayerStyle) } 
         var classicRevealedAction by remember { mutableStateOf(prefs.classicRevealedAction) } 
@@ -1290,10 +1307,6 @@ class MainActivity : ComponentActivity() {
         var activeCard by remember { mutableStateOf(CardSessionManager.currentCard) } 
         var isRevealed by remember { mutableStateOf(CardSessionManager.isRevealed) } 
         var stats by remember { mutableStateOf(CardSessionManager.currentStats) } 
-        val deckCardsCache = remember { mutableStateMapOf<Long, CardInfo?>() } 
-        val deckStatsCache = remember { mutableStateMapOf<Long, Triple<Int, Int, Int>>() } 
-        val deckCardQueues = remember { mutableStateMapOf<Long, MutableList<CardInfo>>() } 
-        val historyStackByDeck = remember { mutableStateMapOf<Long, MutableList<Pair<CardInfo, Triple<Int, Int, Int>>>>() } 
         val coroutineScope = androidx.compose.runtime.rememberCoroutineScope() 
         
         DisposableEffect(Unit) { 
@@ -1442,6 +1455,7 @@ class MainActivity : ComponentActivity() {
                         isGradingCard = true 
                         val currentStats = deckStatsCache[deck.id] ?: Triple(deck.newCount, deck.learnCount, deck.reviewCount) 
                         historyStackByDeck.getOrPut(deck.id) { mutableListOf() }.add(Pair(card, currentStats)) 
+                        CardSessionManager.recordAnswered(card, currentStats) 
                         coroutineScope.launch(Dispatchers.IO) { 
                             ankiHelper.answerCard(card.noteId, card.cardOrd, 1, 5000L, deck.id, card.buttonCount) 
                             val freshBatch = ankiHelper.getDueCardsForDeck(deck.id, limit = 5, deckName = deck.name) 
@@ -1466,6 +1480,7 @@ class MainActivity : ComponentActivity() {
                         prefs.recordNewCardLearned() 
                         val currentStats = deckStatsCache[deck.id] ?: Triple(deck.newCount, deck.learnCount, deck.reviewCount) 
                         historyStackByDeck.getOrPut(deck.id) { mutableListOf() }.add(Pair(card, currentStats)) 
+                        CardSessionManager.recordAnswered(card, currentStats) 
                         coroutineScope.launch(Dispatchers.IO) { 
                             ankiHelper.answerCard(card.noteId, card.cardOrd, 3, 5000L, deck.id, card.buttonCount) 
                             val freshBatch = ankiHelper.getDueCardsForDeck(deck.id, limit = 5, deckName = deck.name) 
@@ -1519,10 +1534,11 @@ class MainActivity : ComponentActivity() {
                                     val q = deckCardQueues.getOrPut(deck.id) { mutableListOf() } 
                                     q.add(0, currentVisibleCard) 
                                 } 
-                                deckCardsCache[deck.id] = restoredCard 
+                                val freshRestoredCard = restoredCard.copy(fetchId = System.nanoTime()) 
+                                deckCardsCache[deck.id] = freshRestoredCard 
                                 deckStatsCache[deck.id] = restoredStats 
                                 isRevealed = false 
-                                CardSessionManager.syncFromExternal(restoredCard, false, restoredStats) 
+                                CardSessionManager.syncFromExternal(freshRestoredCard, false, restoredStats) 
                             } 
                         } 
                         "open_app" -> { 

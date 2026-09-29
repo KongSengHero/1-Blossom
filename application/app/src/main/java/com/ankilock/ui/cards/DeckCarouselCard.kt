@@ -107,7 +107,7 @@ fun DeckCarouselCard(
     modifier: Modifier = Modifier 
 ) { 
     var isProcessing by remember { mutableStateOf(false) } 
-    var revealedNoteId by remember { mutableStateOf<Long?>(null) } 
+    var revealedCardFetchId by remember { mutableStateOf<Long?>(null) } 
     val pageCount = if (decks.isEmpty()) 1 else decks.size 
     val pagerState = rememberPagerState( 
         initialPage = 0, 
@@ -123,7 +123,7 @@ fun DeckCarouselCard(
     LaunchedEffect(pagerState) { 
         snapshotFlow { pagerState.currentPage } 
             .collect { page -> 
-                revealedNoteId = null 
+                revealedCardFetchId = null 
                 val deck = decks.getOrNull(page) 
                 if (deck != null && deck.id != -1L) { 
                     onDeckChanged(deck.id) 
@@ -143,20 +143,20 @@ fun DeckCarouselCard(
     
     LaunchedEffect(isRevealed) { 
         if (!isRevealed) { 
-            revealedNoteId = null 
+            revealedCardFetchId = null 
         } 
     } 
     
     LaunchedEffect(isProcessing) { 
         if (isProcessing) { 
-            kotlinx.coroutines.delay(350) 
+            kotlinx.coroutines.delay(1200) 
             isProcessing = false 
         } 
     } 
     
-    LaunchedEffect(centerCard?.noteId, centerCard?.cardOrd) { 
+    LaunchedEffect(centerCard?.fetchId) { 
         isProcessing = false 
-        revealedNoteId = null 
+        revealedCardFetchId = null 
     } 
     
     Card( 
@@ -325,7 +325,7 @@ fun DeckCarouselCard(
                             deckId = deck.id, 
                             card = cardForDeck, 
                             stats = deckStats, 
-                            isRevealed = isCenterPage && (revealedNoteId != null && revealedNoteId == cardForDeck?.noteId), 
+                            isRevealed = isCenterPage && (revealedCardFetchId != null && revealedCardFetchId == cardForDeck?.fetchId), 
                             backgroundType = backgroundType, 
                             blurRadius = blurRadius, 
                             dimOpacity = dimOpacity, 
@@ -343,8 +343,8 @@ fun DeckCarouselCard(
                                     indication = null 
                                 ) { 
                                     if (cardForDeck != null) { 
-                                        val willReveal = (revealedNoteId != cardForDeck.noteId) 
-                                        revealedNoteId = if (willReveal) cardForDeck.noteId else null 
+                                        val willReveal = (revealedCardFetchId != cardForDeck.fetchId) 
+                                        revealedCardFetchId = if (willReveal) cardForDeck.fetchId else null 
                                         onToggleReveal(cardForDeck, willReveal) 
                                     } 
                                 } 
@@ -501,7 +501,6 @@ fun DeckCarouselCard(
                     onClick = { 
                         if (!isProcessing && currentCenterDeck != null && centerCard != null) { 
                             isProcessing = true 
-                            revealedNoteId = null 
                             onAgain(currentCenterDeck, centerCard) 
                         } 
                     }, 
@@ -530,8 +529,8 @@ fun DeckCarouselCard(
                 Button( 
                     onClick = { 
                         if (centerCard != null) { 
-                            val willReveal = (revealedNoteId != centerCard.noteId) 
-                            revealedNoteId = if (willReveal) centerCard.noteId else null 
+                            val willReveal = (revealedCardFetchId != centerCard.fetchId) 
+                            revealedCardFetchId = if (willReveal) centerCard.fetchId else null 
                             onToggleReveal(centerCard, willReveal) 
                         } 
                     }, 
@@ -548,7 +547,7 @@ fun DeckCarouselCard(
                     contentPadding = PaddingValues(horizontal = 2.dp) 
                 ) { 
                     Text( 
-                        text = if (revealedNoteId != null && revealedNoteId == centerCard?.noteId) "Hide" else "Reveal", 
+                        text = if (revealedCardFetchId != null && revealedCardFetchId == centerCard?.fetchId) "Hide" else "Reveal", 
                         fontSize = 12.5.sp, 
                         fontWeight = FontWeight.Bold, 
                         color = BlossomColors.BtnRevealText, 
@@ -561,7 +560,6 @@ fun DeckCarouselCard(
                     onClick = { 
                         if (!isProcessing && currentCenterDeck != null && centerCard != null) { 
                             isProcessing = true 
-                            revealedNoteId = null 
                             onGood(currentCenterDeck, centerCard) 
                         } 
                     }, 
@@ -599,7 +597,6 @@ fun DeckCarouselCard(
                         if (currentCenterDeck != null && onClassicAction != null) { 
                             if (!isProcessing) { 
                                 isProcessing = true 
-                                revealedNoteId = null 
                                 onClassicAction(currentCenterDeck, centerCard) 
                             } 
                         } else { 
@@ -629,14 +626,13 @@ fun DeckCarouselCard(
                 } 
             } 
             
-            val isCardRevealed = (revealedNoteId != null && revealedNoteId == centerCard?.noteId) 
+            val isCardRevealed = (revealedCardFetchId != null && revealedCardFetchId == centerCard?.fetchId) 
             if (isCardRevealed && centerCard != null && currentCenterDeck != null && onSuspend != null) { 
                 Spacer(modifier = Modifier.height(8.dp)) 
                 Button( 
                     onClick = { 
                         if (!isProcessing) { 
                             isProcessing = true 
-                            revealedNoteId = null 
                             onSuspend(currentCenterDeck, centerCard) 
                         } 
                     }, 

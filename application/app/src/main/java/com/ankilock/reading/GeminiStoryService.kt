@@ -238,6 +238,39 @@ class GeminiStoryService {
         return parseStoryResponse(rawText, jlptLevel, targetWords, targetWordsData, theme, topic, chainId, partNumber, maxChainParts) 
     } 
     
+    internal fun stripRubyFurigana(text: String): String { 
+        return text.replace(Regex("\\[[^\\]]*\\]"), "") 
+    } 
+    
+    internal fun autoParagraphSplit(text: String): String { 
+        val trimmed = text.trim() 
+        if (trimmed.contains("\n\n") || trimmed.contains("\n") || trimmed.length <= 80) { 
+            return trimmed 
+        } 
+        val sentences = trimmed.split(Regex("(?<=。)")).filter { it.isNotBlank() } 
+        if (sentences.size <= 2) { 
+            return trimmed 
+        } 
+        val numParagraphs = 3.coerceAtMost(sentences.size) 
+        val sentencesPerParagraph = (sentences.size + numParagraphs - 1) / numParagraphs 
+        val paragraphs = mutableListOf<String>() 
+        var current = StringBuilder() 
+        var count = 0 
+        for (s in sentences) { 
+            current.append(s) 
+            count++ 
+            if (count >= sentencesPerParagraph && paragraphs.size < numParagraphs - 1) { 
+                paragraphs.add(current.toString().trim()) 
+                current = StringBuilder() 
+                count = 0 
+            } 
+        } 
+        if (current.isNotBlank()) { 
+            paragraphs.add(current.toString().trim()) 
+        } 
+        return paragraphs.joinToString("\n\n") 
+    } 
+    
     internal fun parseStoryResponse( 
         rawText: String, 
         jlptLevel: String, 
@@ -252,8 +285,11 @@ class GeminiStoryService {
         val clean = cleanJsonString(rawText) 
         return try { 
             val json = JSONObject(clean) 
-            val title = json.optString("title", "日本語の物語 ($jlptLevel)").ifBlank { "日本語の物語 ($jlptLevel)" } 
-            val storyContent = json.optString("storyJapanese", "").ifBlank { json.optString("content", rawText) } 
+            val rawTitle = json.optString("title", "日本語の物語 ($jlptLevel)").ifBlank { "日本語の物語 ($jlptLevel)" } 
+            val title = stripRubyFurigana(rawTitle) 
+            val rawStoryContent = json.optString("storyJapanese", "").ifBlank { json.optString("content", rawText) } 
+            val cleanStoryContent = stripRubyFurigana(rawStoryContent) 
+            val storyContent = autoParagraphSplit(cleanStoryContent) 
             val furiganaContent = json.optString("storyFurigana", "").ifBlank { null } 
             val isCliffhanger = json.optBoolean("isCliffhanger", false) 
             val isChainComplete = json.optBoolean("isChainComplete", partNumber >= maxChainParts) 
@@ -335,11 +371,13 @@ class GeminiStoryService {
                     body = lines.drop(1).joinToString("\n").trim() 
                 } 
             } 
+            val cleanTitle = stripRubyFurigana(title) 
+            val cleanBody = autoParagraphSplit(stripRubyFurigana(body)) 
             val objId = UUID.randomUUID().toString() 
             GeneratedStory( 
                 id = objId, 
-                title = title, 
-                content = body, 
+                title = cleanTitle, 
+                content = cleanBody, 
                 jlptLevel = jlptLevel, 
                 createdAt = System.currentTimeMillis(), 
                 targetWords = targetWords, 
@@ -547,22 +585,22 @@ class GeminiStoryService {
             "N1" -> "Strictly JLPT N1: Use literary and sophisticated Japanese expression." 
             else -> "Use natural Japanese suitable for JLPT ${previousStory.jlptLevel}." 
         } 
-        val cliffhangerInstruction = if (isFinale) { 
+        val continuationInstruction = if (isFinale) { 
             """
             [FINAL CHAPTER RESOLUTION MANDATE]
             This is Part $nextPartNumber of $maxChainParts (The Final Chapter).
             You MUST bring all plot threads to a definitive, emotionally satisfying conclusion.
-            DO NOT end on a cliffhanger. In your JSON response, set "isCliffhanger": false and "isChainComplete": true.
+            DO NOT end on a continuation hook. In your JSON response, set "isCliffhanger": false and "isChainComplete": true.
             """.trimIndent() 
         } else { 
             """
-            [EPISODIC CHAPTER & CLIFFHANGER INSTRUCTION]
+            [EPISODIC CHAPTER & CONTINUATION INSTRUCTION]
             This is Part $nextPartNumber of $maxChainParts.
             Directly continue the narrative from where Part ${previousStory.partNumber} left off.
             Resolve the immediate preceding situation, then introduce a new story development.
-            There is a 50% probability to end this chapter on an intense cliffhanger, mystery, or sudden hook.
+            There is a 50% probability to end this chapter on an intense continuation hook, mystery, or sudden suspense.
             In your JSON response:
-            If you end on a cliffhanger hook, set "isCliffhanger": true and "isChainComplete": false.
+            If you end on a continuation hook, set "isCliffhanger": true and "isChainComplete": false.
             Otherwise set "isCliffhanger": false and "isChainComplete": false.
             """.trimIndent() 
         } 
@@ -579,27 +617,41 @@ class GeminiStoryService {
             Freely choose natural Japanese vocabulary strictly appropriate for JLPT ${previousStory.jlptLevel}.
             """.trimIndent() 
         } 
+        val cleanTitle = stripRubyFurigana(previousStory.title.replace(Regex(" - Part \\d+"), "")).trim() 
+        val cleanEnding = stripRubyFurigana(previousStory.content.takeLast(400)) 
         
         return """
         You are an expert Japanese storyteller.
-        Continue the story arc "${previousStory.title}".
+        Continue the story arc "$cleanTitle".
         Length requirement: $lengthRange.
         
         [Previous Chapter Context]
-        Title: ${previousStory.title} (Part ${previousStory.partNumber})
+        Title: $cleanTitle (Part ${previousStory.partNumber})
         Ending Context:
-        ${previousStory.content.takeLast(400)}
+        $cleanEnding
         
         $levelRules
-        $cliffhangerInstruction
+        $continuationInstruction
         $vocabSection
+        
+        [Critical Furigana Rules]
+        - "title" and "storyJapanese" must NEVER contain ruby brackets or furigana (e.g. NEVER write 消[き]えた隣[となり]). Write pure standard Japanese kanji and kana only.
+        - ONLY "storyFurigana" should contain ruby reading brackets for kanji (e.g. 友[とも]達[だち]と公[こう]園[えん]で会[あ]いました。).
+        
+        [Critical Paragraph Formatting]
+        - Structure the story into 3 to 4 distinct paragraphs separated by double newlines (\n\n).
+        - NEVER merge all sentences into a single continuous block or single paragraph.
+        
+        [Vocabulary Extraction Mandate]
+        - "storyWords": Extract 12 to 20 authentic, notable Japanese vocabulary words (kanji, compound words, verbs, adjectives) that actively appear directly in Part $nextPartNumber (excluding basic particles and pronouns). CRITICAL: "storyWords" must not include target words already provided; every entry must be a new, distinct vocabulary word from Part $nextPartNumber. Return each with "kanji", "reading" (hiragana), and "meaning" (English).
+        
         Create exactly $targetQuestions multiple-choice reading comprehension questions.
         
         CRITICAL OUTPUT FORMAT:
         Output strictly valid JSON with this schema (no markdown formatting, no code blocks):
         {
-          "title": "${previousStory.title.replace(Regex(" - Part \\d+"), "")} - Part $nextPartNumber",
-          "storyJapanese": "Full continuing Japanese text for Part $nextPartNumber",
+          "title": "$cleanTitle - Part $nextPartNumber",
+          "storyJapanese": "Full continuing Japanese text for Part $nextPartNumber with 3 to 4 paragraphs separated by double newlines and NO ruby brackets",
           "storyFurigana": "Same text with furigana ruby brackets e.g. 友[とも]達[だち]",
           "isCliffhanger": true,
           "isChainComplete": false,
@@ -607,7 +659,7 @@ class GeminiStoryService {
             {
               "kanji": "単語",
               "reading": "たんご",
-              "meaning": "word"
+              "meaning": "English meaning"
             }
           ],
           "questions": [

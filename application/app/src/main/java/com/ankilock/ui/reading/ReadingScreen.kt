@@ -8,6 +8,8 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -43,6 +45,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars 
 import androidx.compose.foundation.lazy.LazyColumn 
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll 
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -227,6 +230,8 @@ private fun StoryHistoryItemCard(
     isActiveStory: Boolean, 
     isMultiPartChain: Boolean, 
     isSubChapter: Boolean, 
+    isExpanded: Boolean = false, 
+    onToggleExpand: () -> Unit = {}, 
     wallpaperUpdateTrigger: Int, 
     historyManager: ReadingHistoryManager, 
     context: Context, 
@@ -241,7 +246,11 @@ private fun StoryHistoryItemCard(
             return@produceState 
         } 
         val bmp = withContext(Dispatchers.IO) { 
-            val f = File(context.filesDir, "stories/images/${item.id}/cover.png") 
+            var f = File(context.filesDir, "stories/images/${item.id}/cover.png") 
+            if (!f.exists() && item.chainId.isNotBlank() && item.chainId != item.id) { 
+                val fallback = File(context.filesDir, "stories/images/${item.chainId}/cover.png") 
+                if (fallback.exists()) f = fallback 
+            } 
             if (f.exists()) { 
                 try { 
                     val options = BitmapFactory.Options().apply { 
@@ -272,7 +281,7 @@ private fun StoryHistoryItemCard(
         modifier = Modifier 
             .fillMaxWidth() 
             .padding(start = if (isSubChapter) 18.dp else 0.dp) 
-            .height(if (isSubChapter) 120.dp else 135.dp), 
+            .height(if (isSubChapter) 115.dp else if (isMultiPartChain) 165.dp else 135.dp), 
         shape = RoundedCornerShape(16.dp), 
         containerColor = if (isSubChapter) BlossomColors.SurfaceCard2 else BlossomColors.SurfaceElevated, 
         borderBrush = androidx.compose.ui.graphics.SolidColor( 
@@ -303,20 +312,23 @@ private fun StoryHistoryItemCard(
                 ) 
             } 
 
-            Row( 
+            Column( 
                 modifier = Modifier 
                     .fillMaxSize() 
                     .padding(14.dp), 
-                verticalAlignment = Alignment.CenterVertically, 
-                horizontalArrangement = Arrangement.SpaceBetween 
+                verticalArrangement = Arrangement.SpaceBetween 
             ) { 
-                Column( 
-                    modifier = Modifier 
-                        .weight(1f) 
-                        .fillMaxHeight(), 
-                    verticalArrangement = Arrangement.SpaceBetween 
+                Row( 
+                    modifier = Modifier.fillMaxWidth(), 
+                    verticalAlignment = Alignment.CenterVertically, 
+                    horizontalArrangement = Arrangement.SpaceBetween 
                 ) { 
-                    Row(verticalAlignment = Alignment.CenterVertically) { 
+                    Row( 
+                        modifier = Modifier 
+                            .weight(1f) 
+                            .horizontalScroll(rememberScrollState()), 
+                        verticalAlignment = Alignment.CenterVertically 
+                    ) { 
                         Surface( 
                             shape = RoundedCornerShape(6.dp), 
                             color = BlossomColors.SakuraRoseContainer 
@@ -330,42 +342,6 @@ private fun StoryHistoryItemCard(
                                 softWrap = false, 
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
                             ) 
-                        } 
-                        if (isMultiPartChain || item.partNumber > 1) { 
-                            Spacer(modifier = Modifier.width(6.dp)) 
-                            Surface( 
-                                shape = RoundedCornerShape(6.dp), 
-                                color = BlossomColors.WisteriaVioletContainer, 
-                                border = BorderStroke(1.dp, BlossomColors.WisteriaViolet.copy(alpha = 0.5f)) 
-                            ) { 
-                                Text( 
-                                    text = "Part ${item.partNumber}/${item.maxChainParts}", 
-                                    fontSize = 10.sp, 
-                                    fontWeight = FontWeight.Bold, 
-                                    color = BlossomColors.WisteriaViolet, 
-                                    maxLines = 1, 
-                                    softWrap = false, 
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
-                                ) 
-                            } 
-                        } 
-                        if (item.isCliffhanger) { 
-                            Spacer(modifier = Modifier.width(6.dp)) 
-                            Surface( 
-                                shape = RoundedCornerShape(6.dp), 
-                                color = BlossomColors.WarmAmberContainer, 
-                                border = BorderStroke(1.dp, BlossomColors.WarmAmber.copy(alpha = 0.5f)) 
-                            ) { 
-                                Text( 
-                                    text = "⚡ Cliffhanger", 
-                                    fontSize = 10.sp, 
-                                    fontWeight = FontWeight.Bold, 
-                                    color = BlossomColors.WarmAmber, 
-                                    maxLines = 1, 
-                                    softWrap = false, 
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
-                                ) 
-                            } 
                         } 
                         if (item.isChainComplete && item.partNumber > 1) { 
                             Spacer(modifier = Modifier.width(6.dp)) 
@@ -422,24 +398,6 @@ private fun StoryHistoryItemCard(
                                 ) 
                             } 
                         } 
-                        if (isActiveStory) { 
-                            Spacer(modifier = Modifier.width(6.dp)) 
-                            Surface( 
-                                shape = RoundedCornerShape(6.dp), 
-                                color = BlossomColors.BlossomGreenSurface, 
-                                border = BorderStroke(1.dp, BlossomColors.BlossomGreen) 
-                            ) { 
-                                Text( 
-                                    text = "Active", 
-                                    fontSize = 10.sp, 
-                                    fontWeight = FontWeight.Bold, 
-                                    color = BlossomColors.BlossomGreen, 
-                                    maxLines = 1, 
-                                    softWrap = false, 
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
-                                ) 
-                            } 
-                        } 
                         Spacer(modifier = Modifier.width(8.dp)) 
                         val dateFormatted = remember(item.createdAt) { 
                             SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(item.createdAt)) 
@@ -452,35 +410,44 @@ private fun StoryHistoryItemCard(
                             softWrap = false 
                         ) 
                     } 
+                    
+                    if (!isSubChapter) { 
+                        Spacer(modifier = Modifier.width(6.dp)) 
+                        IconButton( 
+                            onClick = onTogglePin, 
+                            modifier = Modifier.size(28.dp) 
+                        ) { 
+                            Icon( 
+                                if (item.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin, 
+                                contentDescription = if (item.isPinned) "Unpin Story" else "Pin Story", 
+                                tint = if (item.isPinned) BlossomColors.SakuraRose else (if (itemBitmap != null) Color.White.copy(alpha = 0.75f) else BlossomColors.TextSecondary), 
+                                modifier = Modifier.size(18.dp) 
+                            ) 
+                        } 
+                    } 
+                } 
+                
+                Spacer(modifier = Modifier.weight(1f)) 
+                
+                Row( 
+                    modifier = Modifier.fillMaxWidth(), 
+                    verticalAlignment = Alignment.CenterVertically, 
+                    horizontalArrangement = Arrangement.SpaceBetween 
+                ) { 
+                    val displayTitle = remember(item.title) { item.title.replace(Regex("\\[[^\\]]*\\]"), "") } 
                     Text( 
-                        text = item.title, 
+                        text = displayTitle, 
                         fontWeight = FontWeight.SemiBold, 
                         fontSize = 15.sp, 
                         color = if (itemBitmap != null) Color.White else BlossomColors.TextPrimary, 
                         maxLines = 2, 
-                        overflow = TextOverflow.Ellipsis 
+                        overflow = TextOverflow.Ellipsis, 
+                        modifier = Modifier.weight(1f) 
                     ) 
-                } 
-                Spacer(modifier = Modifier.width(8.dp)) 
-                Column( 
-                    modifier = Modifier.fillMaxHeight(), 
-                    verticalArrangement = Arrangement.SpaceBetween, 
-                    horizontalAlignment = Alignment.End 
-                ) { 
-                    IconButton( 
-                        onClick = onTogglePin, 
-                        modifier = Modifier.size(32.dp) 
-                    ) { 
-                        Icon( 
-                            if (item.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin, 
-                            contentDescription = if (item.isPinned) "Unpin Story" else "Pin Story", 
-                            tint = if (item.isPinned) BlossomColors.SakuraRose else (if (itemBitmap != null) Color.White.copy(alpha = 0.75f) else BlossomColors.TextSecondary), 
-                            modifier = Modifier.size(18.dp) 
-                        ) 
-                    } 
+                    Spacer(modifier = Modifier.width(8.dp)) 
                     IconButton( 
                         onClick = onDelete, 
-                        modifier = Modifier.size(32.dp) 
+                        modifier = Modifier.size(28.dp) 
                     ) { 
                         Icon( 
                             Icons.Filled.DeleteOutline, 
@@ -488,6 +455,46 @@ private fun StoryHistoryItemCard(
                             tint = BlossomColors.BlossomRed, 
                             modifier = Modifier.size(18.dp) 
                         ) 
+                    } 
+                } 
+                
+                if (isMultiPartChain && !isSubChapter) { 
+                    Spacer(modifier = Modifier.height(4.dp)) 
+                    Surface( 
+                        onClick = onToggleExpand, 
+                        shape = RoundedCornerShape(7.dp), 
+                        color = BlossomColors.WisteriaVioletContainer.copy(alpha = 0.40f), 
+                        border = BorderStroke(1.dp, BlossomColors.WisteriaViolet.copy(alpha = 0.30f)), 
+                        modifier = Modifier.fillMaxWidth() 
+                    ) { 
+                        Row( 
+                            modifier = Modifier 
+                                .fillMaxWidth() 
+                                .padding(vertical = 2.dp), 
+                            verticalAlignment = Alignment.CenterVertically, 
+                            horizontalArrangement = Arrangement.Center 
+                        ) { 
+                            Icon( 
+                                imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, 
+                                contentDescription = null, 
+                                tint = BlossomColors.WisteriaViolet, 
+                                modifier = Modifier.size(15.dp) 
+                            ) 
+                            Spacer(modifier = Modifier.width(5.dp)) 
+                            Text( 
+                                text = "More Chapters", 
+                                fontSize = 11.sp, 
+                                fontWeight = FontWeight.SemiBold, 
+                                color = BlossomColors.WisteriaViolet 
+                            ) 
+                            Spacer(modifier = Modifier.width(5.dp)) 
+                            Icon( 
+                                imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, 
+                                contentDescription = null, 
+                                tint = BlossomColors.WisteriaViolet, 
+                                modifier = Modifier.size(15.dp) 
+                            ) 
+                        } 
                     } 
                 } 
             } 
@@ -615,11 +622,15 @@ fun ReadingScreen(
     var savedStories by remember { mutableStateOf(historyManager.getStories()) } 
     var showClearAllConfirmation by remember { mutableStateOf(false) } 
     var storyToDelete by remember { mutableStateOf<GeneratedStory?>(null) } 
+    var showSingleDeleteFirstDialog by remember { mutableStateOf(false) } 
+    var showSingleDeleteFinalDialog by remember { mutableStateOf(false) } 
     val expandedChains = remember { mutableStateMapOf<String, Boolean>() } 
     var chainRootToDelete by remember { mutableStateOf<GeneratedStory?>(null) } 
     var showRootWarningFirstDialog by remember { mutableStateOf(false) } 
     var showRootWarningFinalDialog by remember { mutableStateOf(false) } 
     var cascadePartToDelete by remember { mutableStateOf<GeneratedStory?>(null) } 
+    var showCascadeFirstDialog by remember { mutableStateOf(false) } 
+    var showCascadeFinalDialog by remember { mutableStateOf(false) } 
     
     val historyNoBounceNestedScroll = remember { 
         object : NestedScrollConnection { 
@@ -645,6 +656,13 @@ fun ReadingScreen(
         } 
     } 
     
+    LaunchedEffect(generationError) { 
+        if (generationError != null) { 
+            kotlinx.coroutines.delay(7000L) 
+            generationError = null 
+        } 
+    } 
+    
     val wordDetailSheetState = rememberModalBottomSheetState() 
     var selectedWordDetail by remember { mutableStateOf<AnkiVocabularyItem?>(null) } 
     
@@ -655,10 +673,14 @@ fun ReadingScreen(
     var wallpaperUpdateTrigger by remember { mutableIntStateOf(0) } 
     var quickJishoWord by remember { mutableStateOf<String?>(null) } 
     
-    val currentCoverFile = remember(currentStory?.id, wallpaperUpdateTrigger) { 
-        currentStory?.id?.let { id -> 
-            val f = File(context.filesDir, "stories/images/$id/cover.png") 
-            if (f.exists()) f else null 
+    val currentCoverFile = remember(currentStory?.id, currentStory?.chainId, wallpaperUpdateTrigger) { 
+        currentStory?.let { s -> 
+            val f = File(context.filesDir, "stories/images/${s.id}/cover.png") 
+            if (f.exists()) f 
+            else if (s.chainId.isNotBlank() && s.chainId != s.id) { 
+                val fallback = File(context.filesDir, "stories/images/${s.chainId}/cover.png") 
+                if (fallback.exists()) fallback else null 
+            } else null 
         } 
     } 
     val blurRadius = prefs.appBlurRadius 
@@ -1819,8 +1841,9 @@ fun ReadingScreen(
                         Spacer(modifier = Modifier.height(16.dp)) 
 
                         val isTitleActive = (isNarrating || isAudioPaused) && currentlyPlayingStoryId == story.id && activeSentenceIndex == -1 
+                        val displayTitle = remember(story.title) { story.title.replace(Regex("\\[[^\\]]*\\]"), "") } 
                         Text( 
-                                    text = story.title, 
+                                    text = displayTitle, 
                                     fontSize = 22.sp, 
                                     fontWeight = FontWeight.Bold, 
                                     color = BlossomColors.TextPrimary, 
@@ -2214,19 +2237,39 @@ fun ReadingScreen(
             Card( 
                 shape = RoundedCornerShape(16.dp), 
                 colors = CardDefaults.cardColors(containerColor = BlossomColors.SakuraRoseContainer), 
-                border = BorderStroke(1.dp, BlossomColors.BlossomRed.copy(alpha = 0.4f)) 
+                border = BorderStroke(1.dp, BlossomColors.BlossomRed.copy(alpha = 0.4f)), 
+                modifier = Modifier.fillMaxWidth() 
             ) { 
                 Row( 
-                    modifier = Modifier.padding(14.dp), 
-                    verticalAlignment = Alignment.CenterVertically 
+                    modifier = Modifier 
+                        .fillMaxWidth() 
+                        .padding(horizontal = 14.dp, vertical = 10.dp), 
+                    verticalAlignment = Alignment.CenterVertically, 
+                    horizontalArrangement = Arrangement.SpaceBetween 
                 ) { 
-                    Icon(Icons.Filled.Warning, contentDescription = null, tint = BlossomColors.BlossomRed) 
-                    Spacer(modifier = Modifier.width(10.dp)) 
-                    Text( 
-                        text = generationError ?: "Error generating story", 
-                        fontSize = 13.sp, 
-                        color = BlossomColors.BlossomRed 
-                    ) 
+                    Row( 
+                        modifier = Modifier.weight(1f), 
+                        verticalAlignment = Alignment.CenterVertically 
+                    ) { 
+                        Icon(Icons.Filled.Warning, contentDescription = null, tint = BlossomColors.BlossomRed) 
+                        Spacer(modifier = Modifier.width(10.dp)) 
+                        Text( 
+                            text = generationError ?: "Error generating story", 
+                            fontSize = 13.sp, 
+                            color = BlossomColors.BlossomRed 
+                        ) 
+                    } 
+                    IconButton( 
+                        onClick = { generationError = null }, 
+                        modifier = Modifier.size(24.dp) 
+                    ) { 
+                        Icon( 
+                            imageVector = Icons.Default.Close, 
+                            contentDescription = "Dismiss error", 
+                            tint = BlossomColors.BlossomRed, 
+                            modifier = Modifier.size(16.dp) 
+                        ) 
+                    } 
                 } 
             } 
         } 
@@ -2244,181 +2287,196 @@ fun ReadingScreen(
         } 
         
         val canContinueChain = (currentStory != null && !currentStory!!.isChainComplete && currentStory!!.partNumber < currentStory!!.maxChainParts) 
-        if (canContinueChain) { 
-            val nextPartNumber = (currentStory?.partNumber ?: 1) + 1 
-            val continuationCost = prefs.getStoryContinuationCost(nextPartNumber) 
-            val isCliffhanger = currentStory?.isCliffhanger == true 
-            
-            Squircle3DButton( 
-                onClick = { 
-                    if (apiKey.isBlank()) { 
-                        showApiKeyDialog = true 
-                    } else if (!prefs.hasAcceptedInternetDisclosure) { 
-                        showInternetConsentDialog = true 
-                    } else if (prefs.storyDailyEnergyRemaining < continuationCost) { 
-                        val msg = "Need $continuationCost Energy to continue (${prefs.storyDailyEnergyRemaining}/${prefs.maxStoryEnergy} available). Recharges in 2 hrs or at midnight!" 
-                        generationError = msg 
-                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() 
-                    } else { 
-                        executeContinuation() 
-                    } 
-                }, 
-                enabled = !isGeneratingStory, 
-                modifier = Modifier 
-                    .fillMaxWidth() 
-                    .height(50.dp), 
-                containerColor = if (isGeneratingStory) BlossomColors.WisteriaViolet.copy(alpha = 0.40f) else BlossomColors.WisteriaViolet, 
-                bevelColor = if (isGeneratingStory) BlossomColors.WisteriaVioletLip.copy(alpha = 0.40f) else BlossomColors.WisteriaVioletLip, 
-                shape = BlossomShapes.SquircleMedium, 
-                depth = 3.dp, 
-                hasSweepingShine = !isLockedWithoutKey && !isGeneratingStory 
-            ) { 
-                Row( 
-                    verticalAlignment = Alignment.CenterVertically, 
-                    horizontalArrangement = Arrangement.Center, 
-                    modifier = Modifier.padding(horizontal = 16.dp) 
-                ) { 
-                    Icon( 
-                        imageVector = if (isCliffhanger) Icons.Filled.Bolt else Icons.AutoMirrored.Filled.MenuBook, 
-                        contentDescription = null, 
-                        tint = BlossomColors.BlossomWhite, 
-                        modifier = Modifier.size(18.dp) 
-                    ) 
-                    Spacer(modifier = Modifier.width(8.dp)) 
-                    Text( 
-                        text = if (isCliffhanger) { 
-                            "⚡ Resolve Cliffhanger • Part $nextPartNumber/${currentStory?.maxChainParts} ($continuationCost ⚡)" 
-                        } else { 
-                            "Continue Story Chain • Part $nextPartNumber/${currentStory?.maxChainParts} ($continuationCost ⚡)" 
-                        }, 
-                        fontWeight = FontWeight.SemiBold, 
-                        fontSize = 15.sp, 
-                        color = BlossomColors.BlossomWhite, 
-                        maxLines = 1, 
-                        softWrap = false 
-                    ) 
-                } 
-            } 
-            Spacer(modifier = Modifier.height(10.dp)) 
-        } 
         
-        Row( 
+        Column( 
             modifier = Modifier.fillMaxWidth(), 
-            horizontalArrangement = Arrangement.spacedBy(8.dp), 
-            verticalAlignment = Alignment.CenterVertically 
+            verticalArrangement = Arrangement.spacedBy(10.dp) 
         ) { 
-            Squircle3DButton( 
-                onClick = { 
-                    if (apiKey.isBlank()) { 
-                        showApiKeyDialog = true 
-                    } else if (!prefs.hasAcceptedInternetDisclosure) { 
-                        showInternetConsentDialog = true 
-                    } else if (prefs.storyDailyEnergyRemaining <= 0) { 
-                        generationError = "Daily story energy depleted (0/${prefs.maxStoryEnergy}). Resets tomorrow!" 
-                    } else { 
-                        executeGeneration() 
-                    } 
-                }, 
-                enabled = !isGeneratingStory, 
-                modifier = Modifier 
-                    .weight(1f) 
-                    .height(50.dp), 
-                containerColor = buttonBackground, 
-                bevelColor = buttonBevel, 
-                shape = BlossomShapes.SquircleMedium, 
-                depth = 3.dp, 
-                hasSweepingShine = !isLockedWithoutKey && !isGeneratingStory 
-            ) { 
-                AnimatedContent( 
-                    targetState = when { 
-                        isGeneratingStory -> 0 
-                        isLockedWithoutKey -> 1 
-                        else -> 2 
+            if (canContinueChain) { 
+                val nextPartNumber = (currentStory?.partNumber ?: 1) + 1 
+                val continuationCost = prefs.getStoryContinuationCost(nextPartNumber) 
+                
+                Squircle3DButton( 
+                    onClick = { 
+                        if (apiKey.isBlank()) { 
+                            showApiKeyDialog = true 
+                        } else if (!prefs.hasAcceptedInternetDisclosure) { 
+                            showInternetConsentDialog = true 
+                        } else if (prefs.storyDailyEnergyRemaining < continuationCost) { 
+                            val msg = "Need $continuationCost Energy to continue (${prefs.storyDailyEnergyRemaining}/${prefs.maxStoryEnergy} available). Recharges in 2 hrs or at midnight!" 
+                            generationError = msg 
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() 
+                        } else { 
+                            executeContinuation() 
+                        } 
                     }, 
-                    transitionSpec = { 
-                        fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(150)) 
-                    }, 
-                    label = "StoryButtonStateTransition" 
-                ) { state -> 
+                    enabled = !isGeneratingStory, 
+                    modifier = Modifier 
+                        .fillMaxWidth() 
+                        .height(50.dp), 
+                    containerColor = if (isGeneratingStory) BlossomColors.WisteriaViolet.copy(alpha = 0.40f) else BlossomColors.WisteriaViolet, 
+                    bevelColor = if (isGeneratingStory) BlossomColors.WisteriaVioletLip.copy(alpha = 0.40f) else BlossomColors.WisteriaVioletLip, 
+                    shape = BlossomShapes.SquircleMedium, 
+                    depth = 3.dp, 
+                    hasSweepingShine = !isLockedWithoutKey && !isGeneratingStory 
+                ) { 
                     Row( 
                         verticalAlignment = Alignment.CenterVertically, 
                         horizontalArrangement = Arrangement.Center, 
                         modifier = Modifier.padding(horizontal = 16.dp) 
                     ) { 
-                        when (state) { 
-                            0 -> { 
-                                CircularProgressIndicator( 
-                                    modifier = Modifier.size(18.dp), 
-                                    strokeWidth = 2.dp, 
-                                    color = BlossomColors.BlossomWhite 
-                                ) 
-                                Spacer(modifier = Modifier.width(10.dp)) 
-                                RotatingStatusText( 
-                                    phrases = listOf( 
-                                        "Crafting $selectedJlpt story...", 
-                                        "Weaving the plot...", 
-                                        "Polishing details...", 
-                                        "Adding some flair...", 
-                                        "Fine-tuning emotions...", 
-                                        "Almost there..." 
-                                    ), 
-                                    isGenerating = isGeneratingStory, 
-                                    color = BlossomColors.BlossomWhite 
-                                ) 
-                            } 
-                            1 -> { 
-                                Icon( 
-                                    Icons.Filled.Lock, 
-                                    contentDescription = "API Key Required", 
-                                    modifier = Modifier.size(18.dp), 
-                                    tint = BlossomColors.BlossomRed 
-                                ) 
-                                Spacer(modifier = Modifier.width(8.dp)) 
-                                Text( 
-                                    text = "Set up API Key to Generate", 
-                                    fontWeight = FontWeight.SemiBold, 
-                                    fontSize = 15.sp, 
-                                    color = BlossomColors.BlossomRed, 
-                                    maxLines = 1, 
-                                    softWrap = false 
-                                ) 
-                            } 
-                            else -> { 
-                                Icon( 
-                                    Icons.Filled.AutoAwesome, 
-                                    contentDescription = null, 
-                                    modifier = Modifier.size(18.dp), 
-                                    tint = BlossomColors.BlossomWhite 
-                                ) 
-                                Spacer(modifier = Modifier.width(8.dp)) 
-                                Text( 
-                                    text = if (currentStory == null) "Generate $selectedJlpt Story (${prefs.storyDailyEnergyRemaining}/${prefs.maxStoryEnergy})" else "Forge New Story (${prefs.storyDailyEnergyRemaining}/${prefs.maxStoryEnergy})", 
-                                    fontWeight = FontWeight.SemiBold, 
-                                    fontSize = 15.sp, 
-                                    color = BlossomColors.BlossomWhite, 
-                                    maxLines = 1, 
-                                    softWrap = false 
-                                ) 
+                        Icon( 
+                            imageVector = Icons.AutoMirrored.Filled.MenuBook, 
+                            contentDescription = null, 
+                            tint = BlossomColors.BlossomWhite, 
+                            modifier = Modifier.size(18.dp) 
+                        ) 
+                        Spacer(modifier = Modifier.width(8.dp)) 
+                        Text( 
+                            text = "Continue Story Part $nextPartNumber/${currentStory?.maxChainParts} ($continuationCost", 
+                            fontWeight = FontWeight.SemiBold, 
+                            fontSize = 15.sp, 
+                            color = BlossomColors.BlossomWhite, 
+                            maxLines = 1, 
+                            softWrap = false 
+                        ) 
+                        Spacer(modifier = Modifier.width(3.dp)) 
+                        Icon( 
+                            imageVector = Icons.Filled.Bolt, 
+                            contentDescription = null, 
+                            tint = BlossomColors.BlossomWhite, 
+                            modifier = Modifier.size(15.dp) 
+                        ) 
+                        Text( 
+                            text = ")", 
+                            fontWeight = FontWeight.SemiBold, 
+                            fontSize = 15.sp, 
+                            color = BlossomColors.BlossomWhite, 
+                            maxLines = 1, 
+                            softWrap = false 
+                        ) 
+                    } 
+                } 
+            } 
+            
+            Row( 
+                modifier = Modifier.fillMaxWidth(), 
+                horizontalArrangement = Arrangement.spacedBy(8.dp), 
+                verticalAlignment = Alignment.CenterVertically 
+            ) { 
+                Squircle3DButton( 
+                    onClick = { 
+                        if (apiKey.isBlank()) { 
+                            showApiKeyDialog = true 
+                        } else if (!prefs.hasAcceptedInternetDisclosure) { 
+                            showInternetConsentDialog = true 
+                        } else if (prefs.storyDailyEnergyRemaining <= 0) { 
+                            generationError = "Daily story energy depleted (0/${prefs.maxStoryEnergy}). Resets tomorrow!" 
+                        } else { 
+                            executeGeneration() 
+                        } 
+                    }, 
+                    enabled = !isGeneratingStory, 
+                    modifier = Modifier 
+                        .weight(1f) 
+                        .height(50.dp), 
+                    containerColor = buttonBackground, 
+                    bevelColor = buttonBevel, 
+                    shape = BlossomShapes.SquircleMedium, 
+                    depth = 3.dp, 
+                    hasSweepingShine = !isLockedWithoutKey && !isGeneratingStory 
+                ) { 
+                    AnimatedContent( 
+                        targetState = when { 
+                            isGeneratingStory -> 0 
+                            isLockedWithoutKey -> 1 
+                            else -> 2 
+                        }, 
+                        transitionSpec = { 
+                            fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(150)) 
+                        }, 
+                        label = "StoryButtonStateTransition" 
+                    ) { state -> 
+                        Row( 
+                            verticalAlignment = Alignment.CenterVertically, 
+                            horizontalArrangement = Arrangement.Center, 
+                            modifier = Modifier.padding(horizontal = 16.dp) 
+                        ) { 
+                            when (state) { 
+                                0 -> { 
+                                    CircularProgressIndicator( 
+                                        modifier = Modifier.size(18.dp), 
+                                        strokeWidth = 2.dp, 
+                                        color = BlossomColors.BlossomWhite 
+                                    ) 
+                                    Spacer(modifier = Modifier.width(10.dp)) 
+                                    RotatingStatusText( 
+                                        phrases = listOf( 
+                                            "Crafting $selectedJlpt story...", 
+                                            "Weaving the plot...", 
+                                            "Polishing details...", 
+                                            "Adding some flair...", 
+                                            "Fine-tuning emotions...", 
+                                            "Almost there..." 
+                                        ), 
+                                        isGenerating = isGeneratingStory, 
+                                        color = BlossomColors.BlossomWhite 
+                                    ) 
+                                } 
+                                1 -> { 
+                                    Icon( 
+                                        Icons.Filled.Lock, 
+                                        contentDescription = "API Key Required", 
+                                        modifier = Modifier.size(18.dp), 
+                                        tint = BlossomColors.BlossomRed 
+                                    ) 
+                                    Spacer(modifier = Modifier.width(8.dp)) 
+                                    Text( 
+                                        text = "Set up API Key to Generate", 
+                                        fontWeight = FontWeight.SemiBold, 
+                                        fontSize = 15.sp, 
+                                        color = BlossomColors.BlossomRed, 
+                                        maxLines = 1, 
+                                        softWrap = false 
+                                    ) 
+                                } 
+                                else -> { 
+                                    Icon( 
+                                        Icons.Filled.AutoAwesome, 
+                                        contentDescription = null, 
+                                        modifier = Modifier.size(18.dp), 
+                                        tint = BlossomColors.BlossomWhite 
+                                    ) 
+                                    Spacer(modifier = Modifier.width(8.dp)) 
+                                    Text( 
+                                        text = if (currentStory == null) "Generate $selectedJlpt Story (${prefs.storyDailyEnergyRemaining}/${prefs.maxStoryEnergy})" else "Forge New Story (${prefs.storyDailyEnergyRemaining}/${prefs.maxStoryEnergy})", 
+                                        fontWeight = FontWeight.SemiBold, 
+                                        fontSize = 15.sp, 
+                                        color = BlossomColors.BlossomWhite, 
+                                        maxLines = 1, 
+                                        softWrap = false 
+                                    ) 
+                                } 
                             } 
                         } 
                     } 
                 } 
-            } 
-            if (isGeneratingStory) { 
-                Squircle3DButton( 
-                    onClick = { cancelStoryGeneration() }, 
-                    modifier = Modifier.size(50.dp), 
-                    containerColor = BlossomColors.BlossomRed, 
-                    bevelColor = BlossomColors.BlossomRedLip, 
-                    shape = BlossomShapes.SquircleMedium, 
-                    depth = 3.dp 
-                ) { 
-                    Icon( 
-                        imageVector = Icons.Filled.Close, 
-                        contentDescription = "Cancel", 
-                        tint = Color.White, 
-                        modifier = Modifier.size(22.dp) 
-                    ) 
+                if (isGeneratingStory) { 
+                    Squircle3DButton( 
+                        onClick = { cancelStoryGeneration() }, 
+                        modifier = Modifier.size(50.dp), 
+                        containerColor = BlossomColors.BlossomRed, 
+                        bevelColor = BlossomColors.BlossomRedLip, 
+                        shape = BlossomShapes.SquircleMedium, 
+                        depth = 3.dp 
+                    ) { 
+                        Icon( 
+                            imageVector = Icons.Filled.Close, 
+                            contentDescription = "Cancel", 
+                            tint = Color.White, 
+                            modifier = Modifier.size(22.dp) 
+                        ) 
+                    } 
                 } 
             } 
         } 
@@ -3003,107 +3061,83 @@ fun ReadingScreen(
                             val rootStory = group.first() 
                             val isExpanded = expandedChains[chainId] ?: false 
                             
-                            item(key = "root_${rootStory.id}") { 
-                                StoryHistoryItemCard( 
-                                    item = rootStory, 
-                                    isActiveStory = (currentStory?.id ?: prefs.lastReadStoryId) == rootStory.id, 
-                                    isMultiPartChain = isMultiPart, 
-                                    isSubChapter = false, 
-                                    wallpaperUpdateTrigger = wallpaperUpdateTrigger, 
-                                    historyManager = historyManager, 
-                                    context = context, 
-                                    onClick = { 
-                                        currentStory = rootStory 
-                                        coroutineScope.launch { 
-                                            historySheetState.hide() 
-                                            showHistorySheet = false 
+                            item(key = "chain_$chainId") { 
+                                Column( 
+                                    modifier = Modifier.fillMaxWidth(), 
+                                    verticalArrangement = Arrangement.spacedBy(8.dp) 
+                                ) { 
+                                    StoryHistoryItemCard( 
+                                        item = rootStory, 
+                                        isActiveStory = (currentStory?.id ?: prefs.lastReadStoryId) == rootStory.id, 
+                                        isMultiPartChain = isMultiPart, 
+                                        isSubChapter = false, 
+                                        isExpanded = isExpanded, 
+                                        onToggleExpand = { 
+                                            expandedChains[chainId] = !isExpanded 
+                                        }, 
+                                        wallpaperUpdateTrigger = wallpaperUpdateTrigger, 
+                                        historyManager = historyManager, 
+                                        context = context, 
+                                        onClick = { 
+                                            currentStory = rootStory 
+                                            coroutineScope.launch { 
+                                                historySheetState.hide() 
+                                                showHistorySheet = false 
+                                            } 
+                                        }, 
+                                        onTogglePin = { 
+                                            historyManager.togglePin(rootStory.id) 
+                                            savedStories = historyManager.getStories() 
+                                        }, 
+                                        onDelete = { 
+                                            if (isMultiPart) { 
+                                                chainRootToDelete = rootStory 
+                                                showRootWarningFirstDialog = true 
+                                            } else { 
+                                                storyToDelete = rootStory 
+                                                showSingleDeleteFirstDialog = true 
+                                            } 
                                         } 
-                                    }, 
-                                    onTogglePin = { 
-                                        historyManager.togglePin(rootStory.id) 
-                                        savedStories = historyManager.getStories() 
-                                    }, 
-                                    onDelete = { 
-                                        if (isMultiPart) { 
-                                            chainRootToDelete = rootStory 
-                                            showRootWarningFirstDialog = true 
-                                        } else { 
-                                            storyToDelete = rootStory 
-                                        } 
-                                    } 
-                                ) 
-                            } 
-                            
-                            if (isMultiPart) { 
-                                item(key = "toggle_$chainId") { 
-                                    Surface( 
-                                        modifier = Modifier 
-                                            .fillMaxWidth() 
-                                            .clip(RoundedCornerShape(10.dp)) 
-                                            .clickable { 
-                                                expandedChains[chainId] = !isExpanded 
-                                            }, 
-                                        shape = RoundedCornerShape(10.dp), 
-                                        color = BlossomColors.WisteriaVioletContainer.copy(alpha = 0.55f), 
-                                        border = BorderStroke(1.dp, BlossomColors.WisteriaViolet.copy(alpha = 0.35f)) 
-                                    ) { 
-                                        Row( 
-                                            modifier = Modifier 
-                                                .fillMaxWidth() 
-                                                .padding(horizontal = 14.dp, vertical = 8.dp), 
-                                            verticalAlignment = Alignment.CenterVertically, 
-                                            horizontalArrangement = Arrangement.SpaceBetween 
+                                    ) 
+                                    
+                                    if (isMultiPart) { 
+                                        AnimatedVisibility( 
+                                            visible = isExpanded, 
+                                            enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(), 
+                                            exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut() 
                                         ) { 
-                                            Row(verticalAlignment = Alignment.CenterVertically) { 
-                                                Icon( 
-                                                    imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, 
-                                                    contentDescription = null, 
-                                                    tint = BlossomColors.WisteriaViolet, 
-                                                    modifier = Modifier.size(18.dp) 
-                                                ) 
-                                                Spacer(modifier = Modifier.width(6.dp)) 
-                                                Text( 
-                                                    text = if (isExpanded) "Hide Chain (${group.size} Chapters)" else "Show Chain (${group.size} Chapters)", 
-                                                    fontSize = 12.sp, 
-                                                    fontWeight = FontWeight.SemiBold, 
-                                                    color = BlossomColors.WisteriaViolet 
-                                                ) 
-                                            } 
-                                            Text( 
-                                                text = if (group.last().isChainComplete) "Complete" else "Ongoing", 
-                                                fontSize = 11.sp, 
-                                                fontWeight = FontWeight.Medium, 
-                                                color = if (group.last().isChainComplete) BlossomColors.BlossomGreen else BlossomColors.WarmAmber 
-                                            ) 
-                                        } 
-                                    } 
-                                } 
-                                
-                                if (isExpanded) { 
-                                    items(group.drop(1), key = { "sub_${it.id}" }) { subPart -> 
-                                        StoryHistoryItemCard( 
-                                            item = subPart, 
-                                            isActiveStory = (currentStory?.id ?: prefs.lastReadStoryId) == subPart.id, 
-                                            isMultiPartChain = true, 
-                                            isSubChapter = true, 
-                                            wallpaperUpdateTrigger = wallpaperUpdateTrigger, 
-                                            historyManager = historyManager, 
-                                            context = context, 
-                                            onClick = { 
-                                                currentStory = subPart 
-                                                coroutineScope.launch { 
-                                                    historySheetState.hide() 
-                                                    showHistorySheet = false 
+                                            Column( 
+                                                modifier = Modifier.fillMaxWidth(), 
+                                                verticalArrangement = Arrangement.spacedBy(8.dp) 
+                                            ) { 
+                                                group.drop(1).forEach { subPart -> 
+                                                    StoryHistoryItemCard( 
+                                                        item = subPart, 
+                                                        isActiveStory = (currentStory?.id ?: prefs.lastReadStoryId) == subPart.id, 
+                                                        isMultiPartChain = true, 
+                                                        isSubChapter = true, 
+                                                        wallpaperUpdateTrigger = wallpaperUpdateTrigger, 
+                                                        historyManager = historyManager, 
+                                                        context = context, 
+                                                        onClick = { 
+                                                            currentStory = subPart 
+                                                            coroutineScope.launch { 
+                                                                historySheetState.hide() 
+                                                                showHistorySheet = false 
+                                                            } 
+                                                        }, 
+                                                        onTogglePin = { 
+                                                            historyManager.togglePin(subPart.id) 
+                                                            savedStories = historyManager.getStories() 
+                                                        }, 
+                                                        onDelete = { 
+                                                            cascadePartToDelete = subPart 
+                                                            showCascadeFirstDialog = true 
+                                                        } 
+                                                    ) 
                                                 } 
-                                            }, 
-                                            onTogglePin = { 
-                                                historyManager.togglePin(subPart.id) 
-                                                savedStories = historyManager.getStories() 
-                                            }, 
-                                            onDelete = { 
-                                                cascadePartToDelete = subPart 
                                             } 
-                                        ) 
+                                        } 
                                     } 
                                 } 
                             } 
@@ -3185,9 +3219,12 @@ fun ReadingScreen(
         } 
     } 
     
-    if (storyToDelete != null) { 
+    if (showSingleDeleteFirstDialog && storyToDelete != null) { 
         val targetStory = storyToDelete!! 
-        androidx.compose.ui.window.Dialog(onDismissRequest = { storyToDelete = null }) { 
+        androidx.compose.ui.window.Dialog(onDismissRequest = { 
+            showSingleDeleteFirstDialog = false 
+            storyToDelete = null 
+        }) { 
             Card( 
                 shape = RoundedCornerShape(20.dp), 
                 colors = CardDefaults.cardColors(containerColor = BlossomColors.SurfaceCard1), 
@@ -3215,7 +3252,7 @@ fun ReadingScreen(
                     } 
                     
                     Text( 
-                        text = "Are you sure you want to delete \"${targetStory.title}\"? This action cannot be undone.", 
+                        text = "Are you sure you want to delete \"${targetStory.title}\"?", 
                         fontSize = 13.sp, 
                         color = BlossomColors.TextSecondary, 
                         lineHeight = 20.sp 
@@ -3226,7 +3263,87 @@ fun ReadingScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp) 
                     ) { 
                         OutlinedButton( 
-                            onClick = { storyToDelete = null }, 
+                            onClick = { 
+                                showSingleDeleteFirstDialog = false 
+                                storyToDelete = null 
+                            }, 
+                            shape = RoundedCornerShape(12.dp), 
+                            border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                            modifier = Modifier.weight(1f), 
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp) 
+                        ) { 
+                            Text("Cancel", color = BlossomColors.TextSecondary, maxLines = 1, softWrap = false) 
+                        } 
+                        
+                        Button( 
+                            onClick = { 
+                                showSingleDeleteFirstDialog = false 
+                                showSingleDeleteFinalDialog = true 
+                            }, 
+                            shape = RoundedCornerShape(12.dp), 
+                            colors = ButtonDefaults.buttonColors( 
+                                containerColor = BlossomColors.BlossomRed, 
+                                contentColor = BlossomColors.BlossomWhite 
+                            ), 
+                            modifier = Modifier.weight(1f), 
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp) 
+                        ) { 
+                            Text("Continue", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) 
+                        } 
+                    } 
+                } 
+            } 
+        } 
+    } 
+    
+    if (showSingleDeleteFinalDialog && storyToDelete != null) { 
+        val targetStory = storyToDelete!! 
+        androidx.compose.ui.window.Dialog(onDismissRequest = { 
+            showSingleDeleteFinalDialog = false 
+            storyToDelete = null 
+        }) { 
+            Card( 
+                shape = RoundedCornerShape(20.dp), 
+                colors = CardDefaults.cardColors(containerColor = BlossomColors.SurfaceCard1), 
+                border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                modifier = Modifier.fillMaxWidth() 
+            ) { 
+                Column( 
+                    modifier = Modifier.padding(22.dp), 
+                    verticalArrangement = Arrangement.spacedBy(14.dp) 
+                ) { 
+                    Row(verticalAlignment = Alignment.CenterVertically) { 
+                        Icon( 
+                            Icons.Filled.Warning, 
+                            contentDescription = null, 
+                            tint = BlossomColors.BlossomRed, 
+                            modifier = Modifier.size(24.dp) 
+                        ) 
+                        Spacer(modifier = Modifier.width(10.dp)) 
+                        Text( 
+                            text = "Permanent Deletion", 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 18.sp, 
+                            color = BlossomColors.TextPrimary 
+                        ) 
+                    } 
+                    
+                    Text( 
+                        text = "Are you completely sure? This story and all associated audio will be permanently deleted and cannot be recovered.", 
+                        fontSize = 13.sp, 
+                        color = BlossomColors.TextSecondary, 
+                        lineHeight = 20.sp 
+                    ) 
+                    
+                    Row( 
+                        modifier = Modifier.fillMaxWidth(), 
+                        horizontalArrangement = Arrangement.spacedBy(10.dp) 
+                    ) { 
+                        OutlinedButton( 
+                            onClick = { 
+                                showSingleDeleteFinalDialog = false 
+                                storyToDelete = null 
+                            }, 
                             shape = RoundedCornerShape(12.dp), 
                             border = BorderStroke(1.dp, BlossomColors.CardBorder), 
                             modifier = Modifier.weight(1f), 
@@ -3242,6 +3359,7 @@ fun ReadingScreen(
                                 if (currentStory?.id == targetStory.id) { 
                                     currentStory = savedStories.firstOrNull() 
                                 } 
+                                showSingleDeleteFinalDialog = false 
                                 storyToDelete = null 
                             }, 
                             shape = RoundedCornerShape(12.dp), 
@@ -3412,7 +3530,7 @@ fun ReadingScreen(
                             modifier = Modifier.weight(1f), 
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp) 
                         ) { 
-                            Text("Delete All", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) 
+                            Text("Delete", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) 
                         } 
                     } 
                 } 
@@ -3420,9 +3538,12 @@ fun ReadingScreen(
         } 
     } 
     
-    if (cascadePartToDelete != null) { 
+    if (showCascadeFirstDialog && cascadePartToDelete != null) { 
         val part = cascadePartToDelete!! 
-        androidx.compose.ui.window.Dialog(onDismissRequest = { cascadePartToDelete = null }) { 
+        androidx.compose.ui.window.Dialog(onDismissRequest = { 
+            showCascadeFirstDialog = false 
+            cascadePartToDelete = null 
+        }) { 
             Card( 
                 shape = RoundedCornerShape(20.dp), 
                 colors = CardDefaults.cardColors(containerColor = BlossomColors.SurfaceCard1), 
@@ -3435,7 +3556,7 @@ fun ReadingScreen(
                 ) { 
                     Row(verticalAlignment = Alignment.CenterVertically) { 
                         Icon( 
-                            Icons.Filled.DeleteOutline, 
+                            Icons.Filled.Warning, 
                             contentDescription = null, 
                             tint = BlossomColors.BlossomRed, 
                             modifier = Modifier.size(24.dp) 
@@ -3461,7 +3582,87 @@ fun ReadingScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp) 
                     ) { 
                         OutlinedButton( 
-                            onClick = { cascadePartToDelete = null }, 
+                            onClick = { 
+                                showCascadeFirstDialog = false 
+                                cascadePartToDelete = null 
+                            }, 
+                            shape = RoundedCornerShape(12.dp), 
+                            border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                            modifier = Modifier.weight(1f), 
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp) 
+                        ) { 
+                            Text("Cancel", color = BlossomColors.TextSecondary, maxLines = 1, softWrap = false) 
+                        } 
+                        
+                        Button( 
+                            onClick = { 
+                                showCascadeFirstDialog = false 
+                                showCascadeFinalDialog = true 
+                            }, 
+                            shape = RoundedCornerShape(12.dp), 
+                            colors = ButtonDefaults.buttonColors( 
+                                containerColor = BlossomColors.BlossomRed, 
+                                contentColor = BlossomColors.BlossomWhite 
+                            ), 
+                            modifier = Modifier.weight(1f), 
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp) 
+                        ) { 
+                            Text("Continue", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) 
+                        } 
+                    } 
+                } 
+            } 
+        } 
+    } 
+    
+    if (showCascadeFinalDialog && cascadePartToDelete != null) { 
+        val part = cascadePartToDelete!! 
+        androidx.compose.ui.window.Dialog(onDismissRequest = { 
+            showCascadeFinalDialog = false 
+            cascadePartToDelete = null 
+        }) { 
+            Card( 
+                shape = RoundedCornerShape(20.dp), 
+                colors = CardDefaults.cardColors(containerColor = BlossomColors.SurfaceCard1), 
+                border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                modifier = Modifier.fillMaxWidth() 
+            ) { 
+                Column( 
+                    modifier = Modifier.padding(22.dp), 
+                    verticalArrangement = Arrangement.spacedBy(14.dp) 
+                ) { 
+                    Row(verticalAlignment = Alignment.CenterVertically) { 
+                        Icon( 
+                            Icons.Filled.DeleteOutline, 
+                            contentDescription = null, 
+                            tint = BlossomColors.BlossomRed, 
+                            modifier = Modifier.size(24.dp) 
+                        ) 
+                        Spacer(modifier = Modifier.width(10.dp)) 
+                        Text( 
+                            text = "Permanent Chapter Deletion", 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 18.sp, 
+                            color = BlossomColors.TextPrimary 
+                        ) 
+                    } 
+                    
+                    Text( 
+                        text = "Are you completely sure? Part ${part.partNumber} and all subsequent chapters in this chain will be permanently deleted and cannot be recovered.", 
+                        fontSize = 13.sp, 
+                        color = BlossomColors.TextSecondary, 
+                        lineHeight = 20.sp 
+                    ) 
+                    
+                    Row( 
+                        modifier = Modifier.fillMaxWidth(), 
+                        horizontalArrangement = Arrangement.spacedBy(10.dp) 
+                    ) { 
+                        OutlinedButton( 
+                            onClick = { 
+                                showCascadeFinalDialog = false 
+                                cascadePartToDelete = null 
+                            }, 
                             shape = RoundedCornerShape(12.dp), 
                             border = BorderStroke(1.dp, BlossomColors.CardBorder), 
                             modifier = Modifier.weight(1f), 
@@ -3478,6 +3679,7 @@ fun ReadingScreen(
                                 if (currentStory?.chainId == cId && (currentStory?.partNumber ?: 1) >= part.partNumber) { 
                                     currentStory = savedStories.firstOrNull { (it.chainId.ifBlank { it.id }) == cId } ?: savedStories.firstOrNull() 
                                 } 
+                                showCascadeFinalDialog = false 
                                 cascadePartToDelete = null 
                             }, 
                             shape = RoundedCornerShape(12.dp), 
@@ -3488,7 +3690,7 @@ fun ReadingScreen(
                             modifier = Modifier.weight(1f), 
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp) 
                         ) { 
-                            Text("Delete From Part ${part.partNumber}", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) 
+                            Text("Delete", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) 
                         } 
                     } 
                 } 

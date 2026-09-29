@@ -432,6 +432,14 @@ class PreferencesManager(context: Context) {
         } 
     } 
     
+    fun getNextEnergyRechargeMillisRemaining(): Long { 
+        checkAndResetDailyEnergy() 
+        if (storyDailyEnergyRemaining >= maxStoryEnergy) return 0L 
+        val now = System.currentTimeMillis() 
+        val nextRechargeTime = lastEnergyRechargeTimestamp + TWO_HOURS_MILLIS 
+        return (nextRechargeTime - now).coerceAtLeast(0L) 
+    } 
+    
     fun consumeStoryEnergy(cost: Int): Boolean { 
         checkAndResetDailyEnergy() 
         val current = storyDailyEnergyRemaining 

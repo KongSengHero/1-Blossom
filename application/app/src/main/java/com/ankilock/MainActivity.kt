@@ -397,6 +397,7 @@ class MainActivity : ComponentActivity() {
         isStreakActive: Boolean, 
         completedStoriesCount: Int, 
         storyEnergy: Int, 
+        maxStoryEnergy: Int = 5, 
         onStreakClick: () -> Unit = {}, 
         onBookClick: () -> Unit = {}, 
         onEnergyClick: () -> Unit = {}, 
@@ -495,8 +496,9 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.clickable { onEnergyClick() } 
                     ) { 
                         Row( 
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), 
-                            verticalAlignment = Alignment.CenterVertically 
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp), 
+                            verticalAlignment = Alignment.CenterVertically, 
+                            horizontalArrangement = Arrangement.spacedBy(5.dp) 
                         ) { 
                             Icon( 
                                 imageVector = Icons.Default.Bolt, 
@@ -504,10 +506,32 @@ class MainActivity : ComponentActivity() {
                                 tint = BlossomColors.WisteriaViolet, 
                                 modifier = Modifier.size(14.dp) 
                             ) 
-                            Spacer(modifier = Modifier.width(4.dp)) 
+                            Box( 
+                                modifier = Modifier 
+                                    .width(36.dp) 
+                                    .height(6.dp) 
+                                    .clip(RoundedCornerShape(3.dp)) 
+                                    .background(BlossomColors.SurfaceElevated) 
+                            ) { 
+                                val energyFrac = (storyEnergy.toFloat() / maxStoryEnergy.toFloat().coerceAtLeast(1f)).coerceIn(0f, 1f) 
+                                Box( 
+                                    modifier = Modifier 
+                                        .fillMaxHeight() 
+                                        .fillMaxWidth(fraction = energyFrac) 
+                                        .clip(RoundedCornerShape(3.dp)) 
+                                        .background( 
+                                            Brush.horizontalGradient( 
+                                                colors = listOf( 
+                                                    BlossomColors.WisteriaViolet, 
+                                                    BlossomColors.SakuraRose 
+                                                ) 
+                                            ) 
+                                        ) 
+                                ) 
+                            } 
                             Text( 
-                                text = "$storyEnergy", 
-                                fontSize = 12.sp, 
+                                text = "$storyEnergy/$maxStoryEnergy", 
+                                fontSize = 11.5.sp, 
                                 fontWeight = FontWeight.Bold, 
                                 color = BlossomColors.TextPrimary 
                             ) 
@@ -996,8 +1020,27 @@ class MainActivity : ComponentActivity() {
         storyEnergy: Int, 
         maxEnergy: Int, 
         streakCount: Int, 
+        prefs: PreferencesManager? = null, 
         onDismiss: () -> Unit 
     ) { 
+        var timeRemainingMs by remember { 
+            mutableStateOf(prefs?.getNextEnergyRechargeMillisRemaining() ?: 0L) 
+        } 
+        LaunchedEffect(Unit) { 
+            while (true) { 
+                timeRemainingMs = prefs?.getNextEnergyRechargeMillisRemaining() ?: 0L 
+                kotlinx.coroutines.delay(1000L) 
+            } 
+        } 
+        val formattedTimer = remember(timeRemainingMs) { 
+            val totalSec = (timeRemainingMs / 1000L).coerceAtLeast(0L) 
+            val hours = totalSec / 3600 
+            val mins = (totalSec % 3600) / 60 
+            val secs = totalSec % 60 
+            if (hours > 0) String.format(java.util.Locale.US, "%dh %02dm %02ds", hours, mins, secs) 
+            else String.format(java.util.Locale.US, "%02dm %02ds", mins, secs) 
+        } 
+        
         Dialog(onDismissRequest = onDismiss) { 
             Card( 
                 shape = RoundedCornerShape(20.dp), 
@@ -1049,156 +1092,493 @@ class MainActivity : ComponentActivity() {
                     
                     Surface( 
                         shape = RoundedCornerShape(14.dp), 
-                        color = BlossomColors.SurfaceCard2, 
-                        border = BorderStroke(1.dp, BlossomColors.CardBorder.copy(alpha = 0.6f)), 
+                        color = BlossomColors.SurfaceElevated, 
+                        border = BorderStroke(1.dp, BlossomColors.CardBorderSubtle), 
                         modifier = Modifier.fillMaxWidth() 
                     ) { 
-                        Row( 
-                            modifier = Modifier.padding(12.dp), 
-                            verticalAlignment = Alignment.CenterVertically 
+                        Column( 
+                            modifier = Modifier.padding(14.dp), 
+                            verticalArrangement = Arrangement.spacedBy(8.dp) 
                         ) { 
-                            Icon( 
-                                Icons.Default.Sync, 
-                                contentDescription = null, 
-                                tint = BlossomColors.WisteriaViolet, 
-                                modifier = Modifier.size(18.dp) 
-                            ) 
-                            Spacer(modifier = Modifier.width(8.dp)) 
-                            Text( 
-                                text = "Passive Recharge: +1 ⚡ every 2 hours\nFull reset to maximum capacity every midnight.", 
-                                fontSize = 12.sp, 
-                                color = BlossomColors.TextSecondary, 
-                                lineHeight = 17.sp 
-                            ) 
+                            Row( 
+                                modifier = Modifier.fillMaxWidth(), 
+                                horizontalArrangement = Arrangement.SpaceBetween, 
+                                verticalAlignment = Alignment.CenterVertically 
+                            ) { 
+                                Text( 
+                                    text = "Energy Reserve", 
+                                    fontSize = 12.5.sp, 
+                                    fontWeight = FontWeight.SemiBold, 
+                                    color = BlossomColors.TextSecondary 
+                                ) 
+                                Text( 
+                                    text = if (storyEnergy >= maxEnergy) "Capacity Full ($storyEnergy/$maxEnergy)" else "$storyEnergy / $maxEnergy", 
+                                    fontSize = 12.5.sp, 
+                                    fontWeight = FontWeight.Bold, 
+                                    color = if (storyEnergy >= maxEnergy) BlossomColors.BlossomGreen else BlossomColors.WisteriaViolet 
+                                ) 
+                            } 
+                            Box( 
+                                modifier = Modifier 
+                                    .fillMaxWidth() 
+                                    .height(10.dp) 
+                                    .clip(RoundedCornerShape(5.dp)) 
+                                    .background(BlossomColors.SurfaceCard2) 
+                            ) { 
+                                val energyFrac = (storyEnergy.toFloat() / maxEnergy.toFloat().coerceAtLeast(1f)).coerceIn(0f, 1f) 
+                                Box( 
+                                    modifier = Modifier 
+                                        .fillMaxHeight() 
+                                        .fillMaxWidth(fraction = energyFrac) 
+                                        .clip(RoundedCornerShape(5.dp)) 
+                                        .background( 
+                                            Brush.horizontalGradient( 
+                                                colors = listOf( 
+                                                    BlossomColors.WisteriaViolet, 
+                                                    BlossomColors.SakuraRose 
+                                                ) 
+                                            ) 
+                                        ) 
+                                ) 
+                            } 
+                            Row( 
+                                modifier = Modifier.fillMaxWidth(), 
+                                horizontalArrangement = Arrangement.SpaceBetween, 
+                                verticalAlignment = Alignment.CenterVertically 
+                            ) { 
+                                Text( 
+                                    text = if (storyEnergy >= maxEnergy) "Full capacity" else "+1 in $formattedTimer", 
+                                    fontSize = 11.5.sp, 
+                                    fontWeight = FontWeight.Medium, 
+                                    color = if (storyEnergy >= maxEnergy) BlossomColors.BlossomGreen else BlossomColors.TextSecondary 
+                                ) 
+                                Text( 
+                                    text = "1 energy / 2h", 
+                                    fontSize = 11.sp, 
+                                    color = BlossomColors.TextMuted 
+                                ) 
+                            } 
                         } 
                     } 
                     
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { 
-                        Row( 
-                            modifier = Modifier.fillMaxWidth(), 
-                            verticalAlignment = Alignment.CenterVertically, 
-                            horizontalArrangement = Arrangement.SpaceBetween 
+                    Surface( 
+                        shape = RoundedCornerShape(16.dp), 
+                        color = BlossomColors.SurfaceCard2, 
+                        border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                        modifier = Modifier.fillMaxWidth() 
+                    ) { 
+                        Column( 
+                            modifier = Modifier.padding(14.dp), 
+                            verticalArrangement = Arrangement.spacedBy(10.dp) 
                         ) { 
-                            Row(verticalAlignment = Alignment.CenterVertically) { 
-                                Icon( 
-                                    Icons.Default.LocalFireDepartment, 
-                                    contentDescription = null, 
-                                    tint = BlossomColors.SakuraRose, 
-                                    modifier = Modifier.size(16.dp) 
-                                ) 
-                                Spacer(modifier = Modifier.width(6.dp)) 
-                                Text( 
-                                    text = "Streak Energy Cap Scaling", 
-                                    fontSize = 13.5.sp, 
-                                    fontWeight = FontWeight.SemiBold, 
-                                    color = BlossomColors.TextPrimary 
-                                ) 
-                            } 
-                            Text( 
-                                text = "Streak: $streakCount d", 
-                                fontSize = 12.sp, 
-                                fontWeight = FontWeight.Medium, 
-                                color = BlossomColors.SakuraRose 
-                            ) 
-                        } 
-                        
-                        Row( 
-                            modifier = Modifier.fillMaxWidth(), 
-                            horizontalArrangement = Arrangement.spacedBy(6.dp) 
-                        ) { 
-                            val tiers = listOf( 
-                                Triple("Base", 5, streakCount < 3), 
-                                Triple("3d", 6, streakCount in 3..6), 
-                                Triple("7d", 7, streakCount in 7..9), 
-                                Triple("10d", 8, streakCount in 10..13), 
-                                Triple("14d", 9, streakCount >= 14) 
-                            ) 
-                            tiers.forEach { (label, cap, isCurrent) -> 
-                                Surface( 
-                                    modifier = Modifier.weight(1f), 
-                                    shape = RoundedCornerShape(10.dp), 
-                                    color = if (isCurrent) BlossomColors.WisteriaVioletContainer else BlossomColors.SurfaceCard2, 
-                                    border = BorderStroke( 
-                                        width = if (isCurrent) 1.5.dp else 1.dp, 
-                                        color = if (isCurrent) BlossomColors.WisteriaViolet else BlossomColors.CardBorder 
+                            Row( 
+                                modifier = Modifier.fillMaxWidth(), 
+                                verticalAlignment = Alignment.CenterVertically, 
+                                horizontalArrangement = Arrangement.SpaceBetween 
+                            ) { 
+                                Row(verticalAlignment = Alignment.CenterVertically) { 
+                                    Icon( 
+                                        Icons.Default.LocalFireDepartment, 
+                                        contentDescription = null, 
+                                        tint = Color(0xFFFF5722), 
+                                        modifier = Modifier.size(17.dp) 
                                     ) 
+                                    Spacer(modifier = Modifier.width(6.dp)) 
+                                    Text( 
+                                        text = "Streak Energy Milestones", 
+                                        fontSize = 13.sp, 
+                                        fontWeight = FontWeight.Bold, 
+                                        color = BlossomColors.TextPrimary 
+                                    ) 
+                                } 
+                                Surface( 
+                                    shape = RoundedCornerShape(6.dp), 
+                                    color = Color(0xFFFF5722).copy(alpha = 0.15f), 
+                                    border = BorderStroke(1.dp, Color(0xFFFF5722).copy(alpha = 0.40f)) 
                                 ) { 
-                                    Column( 
-                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp), 
-                                        horizontalAlignment = Alignment.CenterHorizontally 
+                                    Text( 
+                                        text = "$streakCount d Streak", 
+                                        fontSize = 11.sp, 
+                                        fontWeight = FontWeight.Bold, 
+                                        color = Color(0xFFFF5722), 
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp) 
+                                    ) 
+                                } 
+                            } 
+                            val milestones = listOf( 
+                                Pair(3, 6), 
+                                Pair(7, 7), 
+                                Pair(10, 8), 
+                                Pair(14, 9) 
+                            ) 
+                            val nextMilestone = milestones.firstOrNull { streakCount < it.first } 
+                            
+                            val progressFraction = when { 
+                                streakCount <= 0 -> 0f 
+                                streakCount in 0..3 -> 0.25f * (streakCount / 3f) 
+                                streakCount in 3..7 -> 0.25f + 0.25f * ((streakCount - 3) / 4f) 
+                                streakCount in 7..10 -> 0.50f + 0.25f * ((streakCount - 7) / 3f) 
+                                streakCount in 10..14 -> 0.75f + 0.25f * ((streakCount - 10) / 4f) 
+                                else -> 1f 
+                            } 
+                            
+                            Row( 
+                                modifier = Modifier.fillMaxWidth(), 
+                                verticalAlignment = Alignment.CenterVertically 
+                            ) { 
+                                milestones.forEach { (days, _) -> 
+                                    val isAchieved = streakCount >= days 
+                                    val isNext = nextMilestone?.first == days 
+                                    Box( 
+                                        modifier = Modifier.weight(1f), 
+                                        contentAlignment = Alignment.Center 
                                     ) { 
                                         Text( 
-                                            text = label, 
-                                            fontSize = 11.sp, 
-                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal, 
-                                            color = if (isCurrent) BlossomColors.WisteriaViolet else BlossomColors.TextMuted 
-                                        ) 
-                                        Spacer(modifier = Modifier.height(2.dp)) 
-                                        Text( 
-                                            text = "$cap ⚡", 
-                                            fontSize = 12.5.sp, 
-                                            fontWeight = FontWeight.Bold, 
-                                            color = if (isCurrent) BlossomColors.BlossomWhite else BlossomColors.TextSecondary 
+                                            text = "${days}d", 
+                                            fontSize = 11.5.sp, 
+                                            fontWeight = if (isAchieved || isNext) FontWeight.Bold else FontWeight.Medium, 
+                                            color = if (isAchieved) BlossomColors.BlossomGreen else if (isNext) BlossomColors.WisteriaViolet else BlossomColors.TextMuted 
                                         ) 
                                     } 
                                 } 
                             } 
-                        } 
-                    } 
-                    
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { 
-                        Text( 
-                            text = "Story Chain Continuation Costs", 
-                            fontSize = 13.5.sp, 
-                            fontWeight = FontWeight.SemiBold, 
-                            color = BlossomColors.TextPrimary 
-                        ) 
-                        
-                        Row( 
-                            modifier = Modifier.fillMaxWidth(), 
-                            horizontalArrangement = Arrangement.spacedBy(6.dp) 
-                        ) { 
-                            val costs = listOf( 
-                                "Part 2" to "1 ⚡", 
-                                "Part 3" to "2 ⚡", 
-                                "Part 4" to "2 ⚡", 
-                                "Part 5" to "3 ⚡" 
-                            ) 
-                            costs.forEach { (part, cost) -> 
-                                Surface( 
-                                    modifier = Modifier.weight(1f), 
-                                    shape = RoundedCornerShape(10.dp), 
-                                    color = BlossomColors.SurfaceCard2, 
-                                    border = BorderStroke(1.dp, BlossomColors.CardBorder) 
+                            
+                            Box( 
+                                modifier = Modifier.fillMaxWidth(), 
+                                contentAlignment = Alignment.Center 
+                            ) { 
+                                Box( 
+                                    modifier = Modifier 
+                                        .fillMaxWidth() 
+                                        .padding(horizontal = 16.dp) 
+                                        .height(3.dp) 
+                                        .clip(CircleShape) 
+                                        .background(Color.White.copy(alpha = 0.22f)) 
+                                ) 
+                                
+                                if (progressFraction > 0f) { 
+                                    Box( 
+                                        modifier = Modifier 
+                                            .fillMaxWidth() 
+                                            .padding(horizontal = 16.dp) 
+                                            .height(3.dp) 
+                                            .clip(CircleShape), 
+                                        contentAlignment = Alignment.CenterStart 
+                                    ) { 
+                                        Box( 
+                                            modifier = Modifier 
+                                                .fillMaxWidth(progressFraction) 
+                                                .fillMaxHeight() 
+                                                .background( 
+                                                    Brush.horizontalGradient( 
+                                                        colors = listOf( 
+                                                            BlossomColors.BlossomGreen, 
+                                                            BlossomColors.WisteriaViolet 
+                                                        ) 
+                                                    ) 
+                                                ) 
+                                        ) 
+                                    } 
+                                } 
+                                
+                                Row( 
+                                    modifier = Modifier.fillMaxWidth(), 
+                                    verticalAlignment = Alignment.CenterVertically 
                                 ) { 
-                                    Column( 
-                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp), 
-                                        horizontalAlignment = Alignment.CenterHorizontally 
+                                    milestones.forEach { (days, _) -> 
+                                        val isAchieved = streakCount >= days 
+                                        val isNext = nextMilestone?.first == days 
+                                        Box( 
+                                            modifier = Modifier.weight(1f), 
+                                            contentAlignment = Alignment.Center 
+                                        ) { 
+                                            Box( 
+                                                modifier = Modifier 
+                                                    .size(22.dp) 
+                                                    .clip(CircleShape) 
+                                                    .background( 
+                                                        if (isAchieved) BlossomColors.BlossomGreen 
+                                                        else if (isNext) BlossomColors.WisteriaVioletContainer 
+                                                        else BlossomColors.SurfaceCard2 
+                                                    ) 
+                                                    .border( 
+                                                        width = if (isAchieved) 1.5.dp else if (isNext) 2.dp else 1.dp, 
+                                                        color = if (isAchieved) BlossomColors.BlossomGreen 
+                                                        else if (isNext) BlossomColors.WisteriaViolet 
+                                                        else BlossomColors.CardBorderSubtle, 
+                                                        shape = CircleShape 
+                                                    ), 
+                                                contentAlignment = Alignment.Center 
+                                            ) { 
+                                                if (isAchieved) { 
+                                                    Icon( 
+                                                        imageVector = Icons.Default.Check, 
+                                                        contentDescription = null, 
+                                                        tint = BlossomColors.BlossomWhite, 
+                                                        modifier = Modifier.size(13.dp) 
+                                                    ) 
+                                                } else if (isNext) { 
+                                                    Icon( 
+                                                        imageVector = Icons.Default.Bolt, 
+                                                        contentDescription = null, 
+                                                        tint = BlossomColors.WisteriaViolet, 
+                                                        modifier = Modifier.size(12.dp) 
+                                                    ) 
+                                                } else { 
+                                                    Box( 
+                                                        modifier = Modifier 
+                                                            .size(6.dp) 
+                                                            .clip(CircleShape) 
+                                                            .background(BlossomColors.TextMuted) 
+                                                    ) 
+                                                } 
+                                            } 
+                                        } 
+                                    } 
+                                } 
+                            } 
+                            
+                            Row( 
+                                modifier = Modifier.fillMaxWidth(), 
+                                verticalAlignment = Alignment.CenterVertically 
+                            ) { 
+                                milestones.forEach { (days, cap) -> 
+                                    val isAchieved = streakCount >= days 
+                                    val isNext = nextMilestone?.first == days 
+                                    Box( 
+                                        modifier = Modifier.weight(1f), 
+                                        contentAlignment = Alignment.Center 
                                     ) { 
                                         Text( 
-                                            text = part, 
+                                            text = "$cap Cap", 
+                                            fontSize = 11.5.sp, 
+                                            fontWeight = if (isAchieved || isNext) FontWeight.Bold else FontWeight.Medium, 
+                                            color = if (isAchieved) BlossomColors.BlossomGreen else if (isNext) BlossomColors.WisteriaViolet else BlossomColors.TextMuted 
+                                        ) 
+                                    } 
+                                } 
+                            } 
+                            
+                            Surface( 
+                                shape = RoundedCornerShape(8.dp), 
+                                color = BlossomColors.SurfaceElevated, 
+                                modifier = Modifier.fillMaxWidth() 
+                            ) { 
+                                Row( 
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp), 
+                                    verticalAlignment = Alignment.CenterVertically 
+                                ) { 
+                                    Text( 
+                                        text = "Current Energy Cap: ${prefs?.maxStoryEnergy ?: 5}", 
+                                        fontSize = 12.sp, 
+                                        fontWeight = FontWeight.SemiBold, 
+                                        color = BlossomColors.TextPrimary 
+                                    ) 
+                                    Spacer(modifier = Modifier.width(3.dp)) 
+                                    Icon( 
+                                        imageVector = Icons.Default.Bolt, 
+                                        contentDescription = null, 
+                                        tint = BlossomColors.WisteriaViolet, 
+                                        modifier = Modifier.size(13.dp) 
+                                    ) 
+                                    if (nextMilestone != null) { 
+                                        val daysNeeded = nextMilestone.first - streakCount 
+                                        Spacer(modifier = Modifier.width(6.dp)) 
+                                        Text( 
+                                            text = "($daysNeeded more ${if (daysNeeded == 1) "day" else "days"} to ${nextMilestone.second} Cap)", 
                                             fontSize = 11.sp, 
                                             color = BlossomColors.TextMuted 
                                         ) 
-                                        Spacer(modifier = Modifier.height(2.dp)) 
-                                        Text( 
-                                            text = cost, 
-                                            fontSize = 12.5.sp, 
-                                            fontWeight = FontWeight.Bold, 
-                                            color = BlossomColors.WisteriaViolet 
-                                        ) 
                                     } 
                                 } 
                             } 
                         } 
                     } 
                     
-                    Text( 
-                        text = "Forge new stories and continue cliffhanger story chains up to 3–5 episodes. Keep building your daily streak to increase your maximum energy reserve!", 
-                        fontSize = 12.5.sp, 
-                        color = BlossomColors.TextSecondary, 
-                        lineHeight = 18.sp 
-                    ) 
+                    Surface( 
+                        shape = RoundedCornerShape(16.dp), 
+                        color = BlossomColors.SurfaceCard2, 
+                        border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                        modifier = Modifier.fillMaxWidth() 
+                    ) { 
+                        Column( 
+                            modifier = Modifier.padding(14.dp), 
+                            verticalArrangement = Arrangement.spacedBy(10.dp) 
+                        ) { 
+                            Row( 
+                                modifier = Modifier.fillMaxWidth(), 
+                                verticalAlignment = Alignment.CenterVertically, 
+                                horizontalArrangement = Arrangement.SpaceBetween 
+                            ) { 
+                                Row(verticalAlignment = Alignment.CenterVertically) { 
+                                    Icon( 
+                                        Icons.AutoMirrored.Filled.MenuBook, 
+                                        contentDescription = null, 
+                                        tint = BlossomColors.WisteriaViolet, 
+                                        modifier = Modifier.size(17.dp) 
+                                    ) 
+                                    Spacer(modifier = Modifier.width(6.dp)) 
+                                    Text( 
+                                        text = "Chapter Chain Costs", 
+                                        fontSize = 13.sp, 
+                                        fontWeight = FontWeight.Bold, 
+                                        color = BlossomColors.TextPrimary 
+                                    ) 
+                                } 
+                                Surface( 
+                                    shape = RoundedCornerShape(6.dp), 
+                                    color = BlossomColors.WisteriaVioletContainer, 
+                                    border = BorderStroke(1.dp, BlossomColors.WisteriaViolet.copy(alpha = 0.40f)) 
+                                ) { 
+                                    Text( 
+                                        text = "Up to 5 Chapters", 
+                                        fontSize = 11.sp, 
+                                        fontWeight = FontWeight.Bold, 
+                                        color = BlossomColors.WisteriaViolet, 
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp) 
+                                    ) 
+                                } 
+                            } 
+                            
+                            val chapterSteps = listOf( 
+                                Triple("Part 1", 1, "Forge"), 
+                                Triple("Part 2", 1, "Continue"), 
+                                Triple("Part 3", 2, "Deepen"), 
+                                Triple("Part 4", 2, "Climax"), 
+                                Triple("Part 5", 3, "Finale") 
+                            ) 
+                            
+                            Row( 
+                                modifier = Modifier.fillMaxWidth(), 
+                                verticalAlignment = Alignment.CenterVertically 
+                            ) { 
+                                chapterSteps.forEachIndexed { index, (part, _, _) -> 
+                                    Box( 
+                                        modifier = Modifier.weight(1f), 
+                                        contentAlignment = Alignment.Center 
+                                    ) { 
+                                        Text( 
+                                            text = part, 
+                                            fontSize = 11.5.sp, 
+                                            fontWeight = FontWeight.SemiBold, 
+                                            color = if (index == 4) BlossomColors.SakuraRose else BlossomColors.TextPrimary 
+                                        ) 
+                                    } 
+                                } 
+                            } 
+                            
+                            Box( 
+                                modifier = Modifier.fillMaxWidth(), 
+                                contentAlignment = Alignment.Center 
+                            ) { 
+                                Box( 
+                                    modifier = Modifier 
+                                        .fillMaxWidth() 
+                                        .padding(horizontal = 16.dp) 
+                                        .height(3.dp) 
+                                        .clip(CircleShape) 
+                                        .background(Color.White.copy(alpha = 0.22f)) 
+                                ) 
+                                
+                                Box( 
+                                    modifier = Modifier 
+                                        .fillMaxWidth() 
+                                        .padding(horizontal = 16.dp) 
+                                        .height(3.dp) 
+                                        .clip(CircleShape) 
+                                        .background( 
+                                            Brush.horizontalGradient( 
+                                                colors = listOf( 
+                                                    BlossomColors.BlossomGreen, 
+                                                    BlossomColors.WisteriaViolet, 
+                                                    BlossomColors.SakuraRose 
+                                                ) 
+                                            ) 
+                                        ) 
+                                ) 
+                                
+                                Row( 
+                                    modifier = Modifier.fillMaxWidth(), 
+                                    verticalAlignment = Alignment.CenterVertically 
+                                ) { 
+                                    chapterSteps.forEachIndexed { index, (_, _, _) -> 
+                                        val isFinale = index == 4 
+                                        Box( 
+                                            modifier = Modifier.weight(1f), 
+                                            contentAlignment = Alignment.Center 
+                                        ) { 
+                                            Box( 
+                                                modifier = Modifier 
+                                                    .size(22.dp) 
+                                                    .clip(CircleShape) 
+                                                    .background( 
+                                                        if (isFinale) BlossomColors.SakuraRoseContainer 
+                                                        else if (index == 0) BlossomColors.BlossomGreenSurface 
+                                                        else BlossomColors.WisteriaVioletContainer 
+                                                    ) 
+                                                    .border( 
+                                                        width = 1.5.dp, 
+                                                        color = if (isFinale) BlossomColors.SakuraRose 
+                                                        else if (index == 0) BlossomColors.BlossomGreen 
+                                                        else BlossomColors.WisteriaViolet, 
+                                                        shape = CircleShape 
+                                                    ), 
+                                                contentAlignment = Alignment.Center 
+                                            ) { 
+                                                Text( 
+                                                    text = "${index + 1}", 
+                                                    fontSize = 11.sp, 
+                                                    fontWeight = FontWeight.Bold, 
+                                                    color = if (isFinale) BlossomColors.SakuraRose 
+                                                    else if (index == 0) BlossomColors.BlossomGreen 
+                                                    else BlossomColors.WisteriaViolet 
+                                                ) 
+                                            } 
+                                        } 
+                                    } 
+                                } 
+                            } 
+                            
+                            Row( 
+                                modifier = Modifier.fillMaxWidth(), 
+                                verticalAlignment = Alignment.CenterVertically 
+                            ) { 
+                                chapterSteps.forEachIndexed { index, (_, cost, _) -> 
+                                    val isFinale = index == 4 
+                                    Box( 
+                                        modifier = Modifier.weight(1f), 
+                                        contentAlignment = Alignment.Center 
+                                    ) { 
+                                        Row( 
+                                            verticalAlignment = Alignment.CenterVertically, 
+                                            horizontalArrangement = Arrangement.Center 
+                                        ) { 
+                                            Text( 
+                                                text = "$cost", 
+                                                fontSize = 11.5.sp, 
+                                                fontWeight = FontWeight.Bold, 
+                                                color = if (index == 0) BlossomColors.BlossomGreen else if (isFinale) BlossomColors.SakuraRose else BlossomColors.WisteriaViolet 
+                                            ) 
+                                            Spacer(modifier = Modifier.width(1.5.dp)) 
+                                            Icon( 
+                                                imageVector = Icons.Default.Bolt, 
+                                                contentDescription = null, 
+                                                tint = if (index == 0) BlossomColors.BlossomGreen else if (isFinale) BlossomColors.SakuraRose else BlossomColors.WisteriaViolet, 
+                                                modifier = Modifier.size(11.dp) 
+                                            ) 
+                                        } 
+                                    } 
+                                } 
+                            } 
+                            
+                            Text( 
+                                text = "Each continuation organically builds on preceding events and reveals cliffhangers. Earlier chapters remain preserved if higher chapters are removed.", 
+                                fontSize = 11.5.sp, 
+                                color = BlossomColors.TextSecondary, 
+                                lineHeight = 16.sp 
+                            ) 
+                        } 
+                    } 
                     
                     Button( 
                         onClick = onDismiss, 
@@ -1357,6 +1737,7 @@ class MainActivity : ComponentActivity() {
                         isStreakActive = isStreakActive, 
                         completedStoriesCount = completedStoriesCount, 
                         storyEnergy = storyEnergy, 
+                        maxStoryEnergy = prefs.maxStoryEnergy, 
                         onStreakClick = { showStreakCalendarDialog = true }, 
                         onBookClick = { showBookInfoDialog = true }, 
                         onEnergyClick = { showEnergyInfoDialog = true }, 
@@ -1394,6 +1775,7 @@ class MainActivity : ComponentActivity() {
                         storyEnergy = storyEnergy, 
                         maxEnergy = prefs.maxStoryEnergy, 
                         streakCount = streakCount, 
+                        prefs = prefs, 
                         onDismiss = { showEnergyInfoDialog = false } 
                     ) 
                 } 

@@ -221,6 +221,280 @@ private data class TokenizedParagraph(
     val sentences: List<TokenizedSentence> 
 ) 
 
+@Composable 
+private fun StoryHistoryItemCard( 
+    item: GeneratedStory, 
+    isActiveStory: Boolean, 
+    isMultiPartChain: Boolean, 
+    isSubChapter: Boolean, 
+    wallpaperUpdateTrigger: Int, 
+    historyManager: ReadingHistoryManager, 
+    context: Context, 
+    onClick: () -> Unit, 
+    onTogglePin: () -> Unit, 
+    onDelete: () -> Unit 
+) { 
+    val itemBitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = storyThumbnailCache.get(item.id), key1 = item.id, key2 = wallpaperUpdateTrigger) { 
+        val cached = storyThumbnailCache.get(item.id) 
+        if (cached != null) { 
+            value = cached 
+            return@produceState 
+        } 
+        val bmp = withContext(Dispatchers.IO) { 
+            val f = File(context.filesDir, "stories/images/${item.id}/cover.png") 
+            if (f.exists()) { 
+                try { 
+                    val options = BitmapFactory.Options().apply { 
+                        inSampleSize = 2 
+                    } 
+                    BitmapFactory.decodeFile(f.absolutePath, options)?.asImageBitmap() 
+                } catch (e: Exception) { 
+                    null 
+                } 
+            } else null 
+        } 
+        if (bmp != null) { 
+            storyThumbnailCache.put(item.id, bmp) 
+        } 
+        value = bmp 
+    } 
+
+    val itemStorageFormatted by produceState(initialValue = "", key1 = item.id) { 
+        val formatted = withContext(Dispatchers.IO) { 
+            val bytes = historyManager.getStoryStorageBytes(item) 
+            historyManager.formatStorageSize(bytes) 
+        } 
+        value = formatted 
+    } 
+
+    Squircle3DCard( 
+        onClick = onClick, 
+        modifier = Modifier 
+            .fillMaxWidth() 
+            .padding(start = if (isSubChapter) 18.dp else 0.dp) 
+            .height(if (isSubChapter) 120.dp else 135.dp), 
+        shape = RoundedCornerShape(16.dp), 
+        containerColor = if (isSubChapter) BlossomColors.SurfaceCard2 else BlossomColors.SurfaceElevated, 
+        borderBrush = androidx.compose.ui.graphics.SolidColor( 
+            if (isActiveStory) BlossomColors.BlossomGreen else if (isSubChapter) BlossomColors.WisteriaViolet.copy(alpha = 0.35f) else BlossomColors.CardBorder 
+        ), 
+        depth = if (isSubChapter) 2.dp else 3.dp 
+    ) { 
+        Box(modifier = Modifier.fillMaxSize()) { 
+            val bmp = itemBitmap 
+            if (bmp != null) { 
+                Image( 
+                    bitmap = bmp, 
+                    contentDescription = null, 
+                    contentScale = ContentScale.Crop, 
+                    modifier = Modifier.fillMaxSize() 
+                ) 
+                Box( 
+                    modifier = Modifier 
+                        .fillMaxSize() 
+                        .background( 
+                            Brush.verticalGradient( 
+                                colors = listOf( 
+                                    Color.Black.copy(alpha = 0.50f), 
+                                    Color.Black.copy(alpha = 0.85f) 
+                                ) 
+                            ) 
+                        ) 
+                ) 
+            } 
+
+            Row( 
+                modifier = Modifier 
+                    .fillMaxSize() 
+                    .padding(14.dp), 
+                verticalAlignment = Alignment.CenterVertically, 
+                horizontalArrangement = Arrangement.SpaceBetween 
+            ) { 
+                Column( 
+                    modifier = Modifier 
+                        .weight(1f) 
+                        .fillMaxHeight(), 
+                    verticalArrangement = Arrangement.SpaceBetween 
+                ) { 
+                    Row(verticalAlignment = Alignment.CenterVertically) { 
+                        Surface( 
+                            shape = RoundedCornerShape(6.dp), 
+                            color = BlossomColors.SakuraRoseContainer 
+                        ) { 
+                            Text( 
+                                text = item.jlptLevel, 
+                                fontSize = 10.sp, 
+                                fontWeight = FontWeight.Bold, 
+                                color = BlossomColors.SakuraRose, 
+                                maxLines = 1, 
+                                softWrap = false, 
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
+                            ) 
+                        } 
+                        if (isMultiPartChain || item.partNumber > 1) { 
+                            Spacer(modifier = Modifier.width(6.dp)) 
+                            Surface( 
+                                shape = RoundedCornerShape(6.dp), 
+                                color = BlossomColors.WisteriaVioletContainer, 
+                                border = BorderStroke(1.dp, BlossomColors.WisteriaViolet.copy(alpha = 0.5f)) 
+                            ) { 
+                                Text( 
+                                    text = "Part ${item.partNumber}/${item.maxChainParts}", 
+                                    fontSize = 10.sp, 
+                                    fontWeight = FontWeight.Bold, 
+                                    color = BlossomColors.WisteriaViolet, 
+                                    maxLines = 1, 
+                                    softWrap = false, 
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
+                                ) 
+                            } 
+                        } 
+                        if (item.isCliffhanger) { 
+                            Spacer(modifier = Modifier.width(6.dp)) 
+                            Surface( 
+                                shape = RoundedCornerShape(6.dp), 
+                                color = BlossomColors.WarmAmberContainer, 
+                                border = BorderStroke(1.dp, BlossomColors.WarmAmber.copy(alpha = 0.5f)) 
+                            ) { 
+                                Text( 
+                                    text = "⚡ Cliffhanger", 
+                                    fontSize = 10.sp, 
+                                    fontWeight = FontWeight.Bold, 
+                                    color = BlossomColors.WarmAmber, 
+                                    maxLines = 1, 
+                                    softWrap = false, 
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
+                                ) 
+                            } 
+                        } 
+                        if (item.isChainComplete && item.partNumber > 1) { 
+                            Spacer(modifier = Modifier.width(6.dp)) 
+                            Surface( 
+                                shape = RoundedCornerShape(6.dp), 
+                                color = BlossomColors.BlossomGreenSurface, 
+                                border = BorderStroke(1.dp, BlossomColors.BlossomGreen.copy(alpha = 0.5f)) 
+                            ) { 
+                                Text( 
+                                    text = "Finale", 
+                                    fontSize = 10.sp, 
+                                    fontWeight = FontWeight.Bold, 
+                                    color = BlossomColors.BlossomGreen, 
+                                    maxLines = 1, 
+                                    softWrap = false, 
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
+                                ) 
+                            } 
+                        } 
+                        if (!item.theme.isNullOrBlank()) { 
+                            Spacer(modifier = Modifier.width(6.dp)) 
+                            val themeBadge = StoryThemes.getThemeBadgeColors(item.theme) 
+                            Surface( 
+                                shape = RoundedCornerShape(6.dp), 
+                                color = themeBadge.backgroundColor, 
+                                border = BorderStroke(1.dp, themeBadge.borderColor) 
+                            ) { 
+                                Text( 
+                                    text = StoryThemes.formatThemeName(item.theme), 
+                                    fontSize = 10.sp, 
+                                    fontWeight = FontWeight.Bold, 
+                                    color = themeBadge.contentColor, 
+                                    maxLines = 1, 
+                                    softWrap = false, 
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
+                                ) 
+                            } 
+                        } 
+                        if (item.isPassed) { 
+                            Spacer(modifier = Modifier.width(6.dp)) 
+                            Surface( 
+                                shape = RoundedCornerShape(6.dp), 
+                                color = BlossomColors.BlossomGreenSurface, 
+                                border = BorderStroke(1.dp, BlossomColors.BlossomGreen.copy(alpha = 0.5f)) 
+                            ) { 
+                                Text( 
+                                    text = if (item.quizScore != null) "Passed (${item.quizScore}%)" else "Passed", 
+                                    fontSize = 10.sp, 
+                                    fontWeight = FontWeight.Bold, 
+                                    color = BlossomColors.BlossomGreen, 
+                                    maxLines = 1, 
+                                    softWrap = false, 
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
+                                ) 
+                            } 
+                        } 
+                        if (isActiveStory) { 
+                            Spacer(modifier = Modifier.width(6.dp)) 
+                            Surface( 
+                                shape = RoundedCornerShape(6.dp), 
+                                color = BlossomColors.BlossomGreenSurface, 
+                                border = BorderStroke(1.dp, BlossomColors.BlossomGreen) 
+                            ) { 
+                                Text( 
+                                    text = "Active", 
+                                    fontSize = 10.sp, 
+                                    fontWeight = FontWeight.Bold, 
+                                    color = BlossomColors.BlossomGreen, 
+                                    maxLines = 1, 
+                                    softWrap = false, 
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
+                                ) 
+                            } 
+                        } 
+                        Spacer(modifier = Modifier.width(8.dp)) 
+                        val dateFormatted = remember(item.createdAt) { 
+                            SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(item.createdAt)) 
+                        } 
+                        Text( 
+                            text = "$dateFormatted • $itemStorageFormatted", 
+                            fontSize = 11.sp, 
+                            color = if (itemBitmap != null) Color.White.copy(alpha = 0.75f) else BlossomColors.TextSecondary, 
+                            maxLines = 1, 
+                            softWrap = false 
+                        ) 
+                    } 
+                    Text( 
+                        text = item.title, 
+                        fontWeight = FontWeight.SemiBold, 
+                        fontSize = 15.sp, 
+                        color = if (itemBitmap != null) Color.White else BlossomColors.TextPrimary, 
+                        maxLines = 2, 
+                        overflow = TextOverflow.Ellipsis 
+                    ) 
+                } 
+                Spacer(modifier = Modifier.width(8.dp)) 
+                Column( 
+                    modifier = Modifier.fillMaxHeight(), 
+                    verticalArrangement = Arrangement.SpaceBetween, 
+                    horizontalAlignment = Alignment.End 
+                ) { 
+                    IconButton( 
+                        onClick = onTogglePin, 
+                        modifier = Modifier.size(32.dp) 
+                    ) { 
+                        Icon( 
+                            if (item.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin, 
+                            contentDescription = if (item.isPinned) "Unpin Story" else "Pin Story", 
+                            tint = if (item.isPinned) BlossomColors.SakuraRose else (if (itemBitmap != null) Color.White.copy(alpha = 0.75f) else BlossomColors.TextSecondary), 
+                            modifier = Modifier.size(18.dp) 
+                        ) 
+                    } 
+                    IconButton( 
+                        onClick = onDelete, 
+                        modifier = Modifier.size(32.dp) 
+                    ) { 
+                        Icon( 
+                            Icons.Filled.DeleteOutline, 
+                            contentDescription = "Delete Story", 
+                            tint = BlossomColors.BlossomRed, 
+                            modifier = Modifier.size(18.dp) 
+                        ) 
+                    } 
+                } 
+            } 
+        } 
+    } 
+} 
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) 
 @Composable 
 fun ReadingScreen( 
@@ -341,6 +615,11 @@ fun ReadingScreen(
     var savedStories by remember { mutableStateOf(historyManager.getStories()) } 
     var showClearAllConfirmation by remember { mutableStateOf(false) } 
     var storyToDelete by remember { mutableStateOf<GeneratedStory?>(null) } 
+    val expandedChains = remember { mutableStateMapOf<String, Boolean>() } 
+    var chainRootToDelete by remember { mutableStateOf<GeneratedStory?>(null) } 
+    var showRootWarningFirstDialog by remember { mutableStateOf(false) } 
+    var showRootWarningFinalDialog by remember { mutableStateOf(false) } 
+    var cascadePartToDelete by remember { mutableStateOf<GeneratedStory?>(null) } 
     
     val historyNoBounceNestedScroll = remember { 
         object : NestedScrollConnection { 
@@ -2699,6 +2978,17 @@ fun ReadingScreen(
                         Text("No saved stories yet", color = BlossomColors.TextMuted, fontSize = 14.sp) 
                     } 
                 } else { 
+                    val chainGroups = remember(savedStories) { 
+                        val groups = linkedMapOf<String, MutableList<GeneratedStory>>() 
+                        savedStories.forEach { story -> 
+                            val key = story.chainId.ifBlank { story.id } 
+                            groups.getOrPut(key) { mutableListOf() }.add(story) 
+                        } 
+                        groups.values.map { list -> 
+                            list.sortedBy { it.partNumber } 
+                        } 
+                    } 
+
                     LazyColumn( 
                         modifier = Modifier 
                             .fillMaxWidth() 
@@ -2707,220 +2997,113 @@ fun ReadingScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp), 
                         contentPadding = PaddingValues(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 20.dp) 
                     ) { 
-                        items(savedStories, key = { it.id }) { item -> 
-                            val isActiveStory = (currentStory?.id ?: prefs.lastReadStoryId) == item.id 
-                            val itemBitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = storyThumbnailCache.get(item.id), key1 = item.id, key2 = wallpaperUpdateTrigger) { 
-                                val cached = storyThumbnailCache.get(item.id) 
-                                if (cached != null) { 
-                                    value = cached 
-                                    return@produceState 
-                                } 
-                                val bmp = withContext(Dispatchers.IO) { 
-                                    val f = File(context.filesDir, "stories/images/${item.id}/cover.png") 
-                                    if (f.exists()) { 
-                                        try { 
-                                            val options = BitmapFactory.Options().apply { 
-                                                inSampleSize = 2 
-                                            } 
-                                            BitmapFactory.decodeFile(f.absolutePath, options)?.asImageBitmap() 
-                                        } catch (e: Exception) { 
-                                            null 
+                        chainGroups.forEach { group -> 
+                            val chainId = group.first().chainId.ifBlank { group.first().id } 
+                            val isMultiPart = group.size > 1 
+                            val rootStory = group.first() 
+                            val isExpanded = expandedChains[chainId] ?: false 
+                            
+                            item(key = "root_${rootStory.id}") { 
+                                StoryHistoryItemCard( 
+                                    item = rootStory, 
+                                    isActiveStory = (currentStory?.id ?: prefs.lastReadStoryId) == rootStory.id, 
+                                    isMultiPartChain = isMultiPart, 
+                                    isSubChapter = false, 
+                                    wallpaperUpdateTrigger = wallpaperUpdateTrigger, 
+                                    historyManager = historyManager, 
+                                    context = context, 
+                                    onClick = { 
+                                        currentStory = rootStory 
+                                        coroutineScope.launch { 
+                                            historySheetState.hide() 
+                                            showHistorySheet = false 
                                         } 
-                                    } else null 
-                                } 
-                                if (bmp != null) { 
-                                    storyThumbnailCache.put(item.id, bmp) 
-                                } 
-                                value = bmp 
-                            } 
-
-                            val itemStorageFormatted by produceState(initialValue = "", key1 = item.id) { 
-                                val formatted = withContext(Dispatchers.IO) { 
-                                    val bytes = historyManager.getStoryStorageBytes(item) 
-                                    historyManager.formatStorageSize(bytes) 
-                                } 
-                                value = formatted 
-                            } 
-
-                            Squircle3DCard( 
-                                onClick = { 
-                                    currentStory = item 
-                                    coroutineScope.launch { 
-                                        historySheetState.hide() 
-                                        showHistorySheet = false 
+                                    }, 
+                                    onTogglePin = { 
+                                        historyManager.togglePin(rootStory.id) 
+                                        savedStories = historyManager.getStories() 
+                                    }, 
+                                    onDelete = { 
+                                        if (isMultiPart) { 
+                                            chainRootToDelete = rootStory 
+                                            showRootWarningFirstDialog = true 
+                                        } else { 
+                                            storyToDelete = rootStory 
+                                        } 
                                     } 
-                                }, 
-                                modifier = Modifier 
-                                    .fillMaxWidth() 
-                                    .height(135.dp), 
-                                shape = RoundedCornerShape(16.dp), 
-                                containerColor = BlossomColors.SurfaceElevated, 
-                                borderBrush = androidx.compose.ui.graphics.SolidColor( 
-                                    if (isActiveStory) BlossomColors.BlossomGreen else BlossomColors.CardBorder 
-                                ), 
-                                depth = 3.dp 
-                            ) { 
-                                Box(modifier = Modifier.fillMaxSize()) { 
-                                    val bmp = itemBitmap 
-                                    if (bmp != null) { 
-                                        Image( 
-                                            bitmap = bmp, 
-                                            contentDescription = null, 
-                                            contentScale = ContentScale.Crop, 
-                                            modifier = Modifier.fillMaxSize() 
-                                        ) 
-                                        Box( 
-                                            modifier = Modifier 
-                                                .fillMaxSize() 
-                                                .background( 
-                                                    Brush.verticalGradient( 
-                                                        colors = listOf( 
-                                                            Color.Black.copy(alpha = 0.50f), 
-                                                            Color.Black.copy(alpha = 0.85f) 
-                                                        ) 
-                                                    ) 
-                                                ) 
-                                        ) 
-                                    } 
-
-                                    Row( 
+                                ) 
+                            } 
+                            
+                            if (isMultiPart) { 
+                                item(key = "toggle_$chainId") { 
+                                    Surface( 
                                         modifier = Modifier 
-                                            .fillMaxSize() 
-                                            .padding(14.dp), 
-                                        verticalAlignment = Alignment.CenterVertically, 
-                                        horizontalArrangement = Arrangement.SpaceBetween 
+                                            .fillMaxWidth() 
+                                            .clip(RoundedCornerShape(10.dp)) 
+                                            .clickable { 
+                                                expandedChains[chainId] = !isExpanded 
+                                            }, 
+                                        shape = RoundedCornerShape(10.dp), 
+                                        color = BlossomColors.WisteriaVioletContainer.copy(alpha = 0.55f), 
+                                        border = BorderStroke(1.dp, BlossomColors.WisteriaViolet.copy(alpha = 0.35f)) 
                                     ) { 
-                                        Column( 
+                                        Row( 
                                             modifier = Modifier 
-                                                .weight(1f) 
-                                                .fillMaxHeight(), 
-                                            verticalArrangement = Arrangement.SpaceBetween 
+                                                .fillMaxWidth() 
+                                                .padding(horizontal = 14.dp, vertical = 8.dp), 
+                                            verticalAlignment = Alignment.CenterVertically, 
+                                            horizontalArrangement = Arrangement.SpaceBetween 
                                         ) { 
                                             Row(verticalAlignment = Alignment.CenterVertically) { 
-                                                Surface( 
-                                                    shape = RoundedCornerShape(6.dp), 
-                                                    color = BlossomColors.SakuraRoseContainer 
-                                                ) { 
-                                                    Text( 
-                                                        text = item.jlptLevel, 
-                                                        fontSize = 10.sp, 
-                                                        fontWeight = FontWeight.Bold, 
-                                                        color = BlossomColors.SakuraRose, 
-                                                        maxLines = 1, 
-                                                        softWrap = false, 
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
-                                                    ) 
-                                                } 
-                                                if (!item.theme.isNullOrBlank()) { 
-                                                    Spacer(modifier = Modifier.width(6.dp)) 
-                                                    val themeBadge = StoryThemes.getThemeBadgeColors(item.theme) 
-                                                    Surface( 
-                                                        shape = RoundedCornerShape(6.dp), 
-                                                        color = themeBadge.backgroundColor, 
-                                                        border = BorderStroke(1.dp, themeBadge.borderColor) 
-                                                    ) { 
-                                                        Text( 
-                                                            text = StoryThemes.formatThemeName(item.theme), 
-                                                            fontSize = 10.sp, 
-                                                            fontWeight = FontWeight.Bold, 
-                                                            color = themeBadge.contentColor, 
-                                                            maxLines = 1, 
-                                                            softWrap = false, 
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
-                                                        ) 
-                                                    } 
-                                                } 
-                                                if (item.isPassed) { 
-                                                    Spacer(modifier = Modifier.width(6.dp)) 
-                                                    Surface( 
-                                                        shape = RoundedCornerShape(6.dp), 
-                                                        color = BlossomColors.BlossomGreenSurface, 
-                                                        border = BorderStroke(1.dp, BlossomColors.BlossomGreen.copy(alpha = 0.5f)) 
-                                                    ) { 
-                                                        Text( 
-                                                            text = if (item.quizScore != null) "Passed (${item.quizScore}%)" else "Passed", 
-                                                            fontSize = 10.sp, 
-                                                            fontWeight = FontWeight.Bold, 
-                                                            color = BlossomColors.BlossomGreen, 
-                                                            maxLines = 1, 
-                                                            softWrap = false, 
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
-                                                        ) 
-                                                    } 
-                                                } 
-                                                if (isActiveStory) { 
-                                                    Spacer(modifier = Modifier.width(6.dp)) 
-                                                    Surface( 
-                                                        shape = RoundedCornerShape(6.dp), 
-                                                        color = BlossomColors.BlossomGreenSurface, 
-                                                        border = BorderStroke(1.dp, BlossomColors.BlossomGreen) 
-                                                    ) { 
-                                                        Text( 
-                                                            text = "Active", 
-                                                            fontSize = 10.sp, 
-                                                            fontWeight = FontWeight.Bold, 
-                                                            color = BlossomColors.BlossomGreen, 
-                                                            maxLines = 1, 
-                                                            softWrap = false, 
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) 
-                                                        ) 
-                                                    } 
-                                                } 
-                                                Spacer(modifier = Modifier.width(8.dp)) 
-                                                val dateFormatted = remember(item.createdAt) { 
-                                                    SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(item.createdAt)) 
-                                                } 
+                                                Icon( 
+                                                    imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, 
+                                                    contentDescription = null, 
+                                                    tint = BlossomColors.WisteriaViolet, 
+                                                    modifier = Modifier.size(18.dp) 
+                                                ) 
+                                                Spacer(modifier = Modifier.width(6.dp)) 
                                                 Text( 
-                                                    text = "$dateFormatted • $itemStorageFormatted", 
-                                                    fontSize = 11.sp, 
-                                                    color = if (itemBitmap != null) Color.White.copy(alpha = 0.75f) else BlossomColors.TextSecondary, 
-                                                    maxLines = 1, 
-                                                    softWrap = false 
+                                                    text = if (isExpanded) "Hide Chain (${group.size} Chapters)" else "Show Chain (${group.size} Chapters)", 
+                                                    fontSize = 12.sp, 
+                                                    fontWeight = FontWeight.SemiBold, 
+                                                    color = BlossomColors.WisteriaViolet 
                                                 ) 
                                             } 
                                             Text( 
-                                                text = item.title, 
-                                                fontWeight = FontWeight.SemiBold, 
-                                                fontSize = 15.sp, 
-                                                color = if (itemBitmap != null) Color.White else BlossomColors.TextPrimary, 
-                                                maxLines = 2, 
-                                                overflow = TextOverflow.Ellipsis 
+                                                text = if (group.last().isChainComplete) "Complete" else "Ongoing", 
+                                                fontSize = 11.sp, 
+                                                fontWeight = FontWeight.Medium, 
+                                                color = if (group.last().isChainComplete) BlossomColors.BlossomGreen else BlossomColors.WarmAmber 
                                             ) 
                                         } 
-                                        Spacer(modifier = Modifier.width(8.dp)) 
-                                        Column( 
-                                            modifier = Modifier.fillMaxHeight(), 
-                                            verticalArrangement = Arrangement.SpaceBetween, 
-                                            horizontalAlignment = Alignment.End 
-                                        ) { 
-                                            IconButton( 
-                                                onClick = { 
-                                                    historyManager.togglePin(item.id) 
-                                                    savedStories = historyManager.getStories() 
-                                                }, 
-                                                modifier = Modifier.size(32.dp) 
-                                            ) { 
-                                                Icon( 
-                                                    if (item.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin, 
-                                                    contentDescription = if (item.isPinned) "Unpin Story" else "Pin Story", 
-                                                    tint = if (item.isPinned) BlossomColors.SakuraRose else (if (itemBitmap != null) Color.White.copy(alpha = 0.75f) else BlossomColors.TextSecondary), 
-                                                    modifier = Modifier.size(18.dp) 
-                                                ) 
+                                    } 
+                                } 
+                                
+                                if (isExpanded) { 
+                                    items(group.drop(1), key = { "sub_${it.id}" }) { subPart -> 
+                                        StoryHistoryItemCard( 
+                                            item = subPart, 
+                                            isActiveStory = (currentStory?.id ?: prefs.lastReadStoryId) == subPart.id, 
+                                            isMultiPartChain = true, 
+                                            isSubChapter = true, 
+                                            wallpaperUpdateTrigger = wallpaperUpdateTrigger, 
+                                            historyManager = historyManager, 
+                                            context = context, 
+                                            onClick = { 
+                                                currentStory = subPart 
+                                                coroutineScope.launch { 
+                                                    historySheetState.hide() 
+                                                    showHistorySheet = false 
+                                                } 
+                                            }, 
+                                            onTogglePin = { 
+                                                historyManager.togglePin(subPart.id) 
+                                                savedStories = historyManager.getStories() 
+                                            }, 
+                                            onDelete = { 
+                                                cascadePartToDelete = subPart 
                                             } 
-                                            IconButton( 
-                                                onClick = { 
-                                                    storyToDelete = item 
-                                                }, 
-                                                modifier = Modifier.size(32.dp) 
-                                            ) { 
-                                                Icon( 
-                                                    Icons.Filled.DeleteOutline, 
-                                                    contentDescription = "Delete Story", 
-                                                    tint = BlossomColors.BlossomRed, 
-                                                    modifier = Modifier.size(18.dp) 
-                                                ) 
-                                            } 
-                                        } 
+                                        ) 
                                     } 
                                 } 
                             } 
@@ -3070,6 +3253,242 @@ fun ReadingScreen(
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp) 
                         ) { 
                             Text("Delete", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) 
+                        } 
+                    } 
+                } 
+            } 
+        } 
+    } 
+    
+    if (showRootWarningFirstDialog && chainRootToDelete != null) { 
+        val root = chainRootToDelete!! 
+        androidx.compose.ui.window.Dialog(onDismissRequest = { 
+            showRootWarningFirstDialog = false 
+            chainRootToDelete = null 
+        }) { 
+            Card( 
+                shape = RoundedCornerShape(20.dp), 
+                colors = CardDefaults.cardColors(containerColor = BlossomColors.SurfaceCard1), 
+                border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                modifier = Modifier.fillMaxWidth() 
+            ) { 
+                Column( 
+                    modifier = Modifier.padding(22.dp), 
+                    verticalArrangement = Arrangement.spacedBy(14.dp) 
+                ) { 
+                    Row(verticalAlignment = Alignment.CenterVertically) { 
+                        Icon( 
+                            Icons.Filled.Warning, 
+                            contentDescription = null, 
+                            tint = BlossomColors.BlossomRed, 
+                            modifier = Modifier.size(24.dp) 
+                        ) 
+                        Spacer(modifier = Modifier.width(10.dp)) 
+                        Text( 
+                            text = "Delete Entire Story Chain?", 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 18.sp, 
+                            color = BlossomColors.TextPrimary 
+                        ) 
+                    } 
+                    
+                    Text( 
+                        text = "\"${root.title}\" is the main arc of this connected story chain.\n\nDeleting this main arc will delete all connected chapters in the chain. Would you like to proceed?", 
+                        fontSize = 13.sp, 
+                        color = BlossomColors.TextSecondary, 
+                        lineHeight = 20.sp 
+                    ) 
+                    
+                    Row( 
+                        modifier = Modifier.fillMaxWidth(), 
+                        horizontalArrangement = Arrangement.spacedBy(10.dp) 
+                    ) { 
+                        OutlinedButton( 
+                            onClick = { 
+                                showRootWarningFirstDialog = false 
+                                chainRootToDelete = null 
+                            }, 
+                            shape = RoundedCornerShape(12.dp), 
+                            border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                            modifier = Modifier.weight(1f), 
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp) 
+                        ) { 
+                            Text("Cancel", color = BlossomColors.TextSecondary, maxLines = 1, softWrap = false) 
+                        } 
+                        
+                        Button( 
+                            onClick = { 
+                                showRootWarningFirstDialog = false 
+                                showRootWarningFinalDialog = true 
+                            }, 
+                            shape = RoundedCornerShape(12.dp), 
+                            colors = ButtonDefaults.buttonColors( 
+                                containerColor = BlossomColors.BlossomRed, 
+                                contentColor = BlossomColors.BlossomWhite 
+                            ), 
+                            modifier = Modifier.weight(1f), 
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp) 
+                        ) { 
+                            Text("Continue", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) 
+                        } 
+                    } 
+                } 
+            } 
+        } 
+    } 
+    
+    if (showRootWarningFinalDialog && chainRootToDelete != null) { 
+        val root = chainRootToDelete!! 
+        androidx.compose.ui.window.Dialog(onDismissRequest = { 
+            showRootWarningFinalDialog = false 
+            chainRootToDelete = null 
+        }) { 
+            Card( 
+                shape = RoundedCornerShape(20.dp), 
+                colors = CardDefaults.cardColors(containerColor = BlossomColors.SurfaceCard1), 
+                border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                modifier = Modifier.fillMaxWidth() 
+            ) { 
+                Column( 
+                    modifier = Modifier.padding(22.dp), 
+                    verticalArrangement = Arrangement.spacedBy(14.dp) 
+                ) { 
+                    Row(verticalAlignment = Alignment.CenterVertically) { 
+                        Icon( 
+                            Icons.Filled.DeleteOutline, 
+                            contentDescription = null, 
+                            tint = BlossomColors.BlossomRed, 
+                            modifier = Modifier.size(24.dp) 
+                        ) 
+                        Spacer(modifier = Modifier.width(10.dp)) 
+                        Text( 
+                            text = "Permanent Chain Deletion", 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 18.sp, 
+                            color = BlossomColors.TextPrimary 
+                        ) 
+                    } 
+                    
+                    Text( 
+                        text = "Are you completely sure? All connected chapters and generated audio in this chain will be permanently deleted and cannot be recovered.", 
+                        fontSize = 13.sp, 
+                        color = BlossomColors.TextSecondary, 
+                        lineHeight = 20.sp 
+                    ) 
+                    
+                    Row( 
+                        modifier = Modifier.fillMaxWidth(), 
+                        horizontalArrangement = Arrangement.spacedBy(10.dp) 
+                    ) { 
+                        OutlinedButton( 
+                            onClick = { 
+                                showRootWarningFinalDialog = false 
+                                chainRootToDelete = null 
+                            }, 
+                            shape = RoundedCornerShape(12.dp), 
+                            border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                            modifier = Modifier.weight(1f), 
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp) 
+                        ) { 
+                            Text("Cancel", color = BlossomColors.TextSecondary, maxLines = 1, softWrap = false) 
+                        } 
+                        
+                        Button( 
+                            onClick = { 
+                                val cId = root.chainId.ifBlank { root.id } 
+                                historyManager.deleteStoryChain(cId) 
+                                savedStories = historyManager.getStories() 
+                                if (currentStory?.chainId == cId || currentStory?.id == root.id) { 
+                                    currentStory = savedStories.firstOrNull() 
+                                } 
+                                showRootWarningFinalDialog = false 
+                                chainRootToDelete = null 
+                            }, 
+                            shape = RoundedCornerShape(12.dp), 
+                            colors = ButtonDefaults.buttonColors( 
+                                containerColor = BlossomColors.BlossomRed, 
+                                contentColor = BlossomColors.BlossomWhite 
+                            ), 
+                            modifier = Modifier.weight(1f), 
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp) 
+                        ) { 
+                            Text("Delete All", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) 
+                        } 
+                    } 
+                } 
+            } 
+        } 
+    } 
+    
+    if (cascadePartToDelete != null) { 
+        val part = cascadePartToDelete!! 
+        androidx.compose.ui.window.Dialog(onDismissRequest = { cascadePartToDelete = null }) { 
+            Card( 
+                shape = RoundedCornerShape(20.dp), 
+                colors = CardDefaults.cardColors(containerColor = BlossomColors.SurfaceCard1), 
+                border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                modifier = Modifier.fillMaxWidth() 
+            ) { 
+                Column( 
+                    modifier = Modifier.padding(22.dp), 
+                    verticalArrangement = Arrangement.spacedBy(14.dp) 
+                ) { 
+                    Row(verticalAlignment = Alignment.CenterVertically) { 
+                        Icon( 
+                            Icons.Filled.DeleteOutline, 
+                            contentDescription = null, 
+                            tint = BlossomColors.BlossomRed, 
+                            modifier = Modifier.size(24.dp) 
+                        ) 
+                        Spacer(modifier = Modifier.width(10.dp)) 
+                        Text( 
+                            text = "Delete Part ${part.partNumber} and Onward?", 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 18.sp, 
+                            color = BlossomColors.TextPrimary 
+                        ) 
+                    } 
+                    
+                    Text( 
+                        text = "Deleting Part ${part.partNumber} (\"${part.title}\") will remove it and all subsequent chapters in this chain.\n\nEarlier chapters will be preserved and can continue from Part ${part.partNumber - 1}.", 
+                        fontSize = 13.sp, 
+                        color = BlossomColors.TextSecondary, 
+                        lineHeight = 20.sp 
+                    ) 
+                    
+                    Row( 
+                        modifier = Modifier.fillMaxWidth(), 
+                        horizontalArrangement = Arrangement.spacedBy(10.dp) 
+                    ) { 
+                        OutlinedButton( 
+                            onClick = { cascadePartToDelete = null }, 
+                            shape = RoundedCornerShape(12.dp), 
+                            border = BorderStroke(1.dp, BlossomColors.CardBorder), 
+                            modifier = Modifier.weight(1f), 
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp) 
+                        ) { 
+                            Text("Cancel", color = BlossomColors.TextSecondary, maxLines = 1, softWrap = false) 
+                        } 
+                        
+                        Button( 
+                            onClick = { 
+                                val cId = part.chainId.ifBlank { part.id } 
+                                historyManager.deleteStoryFromPartOnwards(cId, part.partNumber) 
+                                savedStories = historyManager.getStories() 
+                                if (currentStory?.chainId == cId && (currentStory?.partNumber ?: 1) >= part.partNumber) { 
+                                    currentStory = savedStories.firstOrNull { (it.chainId.ifBlank { it.id }) == cId } ?: savedStories.firstOrNull() 
+                                } 
+                                cascadePartToDelete = null 
+                            }, 
+                            shape = RoundedCornerShape(12.dp), 
+                            colors = ButtonDefaults.buttonColors( 
+                                containerColor = BlossomColors.BlossomRed, 
+                                contentColor = BlossomColors.BlossomWhite 
+                            ), 
+                            modifier = Modifier.weight(1f), 
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp) 
+                        ) { 
+                            Text("Delete From Part ${part.partNumber}", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) 
                         } 
                     } 
                 } 

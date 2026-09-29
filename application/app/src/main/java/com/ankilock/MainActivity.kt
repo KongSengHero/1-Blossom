@@ -994,6 +994,8 @@ class MainActivity : ComponentActivity() {
     @Composable 
     fun DailyEnergyInfoDialog( 
         storyEnergy: Int, 
+        maxEnergy: Int, 
+        streakCount: Int, 
         onDismiss: () -> Unit 
     ) { 
         Dialog(onDismissRequest = onDismiss) { 
@@ -1004,7 +1006,9 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxWidth() 
             ) { 
                 Column( 
-                    modifier = Modifier.padding(22.dp), 
+                    modifier = Modifier 
+                        .padding(22.dp) 
+                        .verticalScroll(rememberScrollState()), 
                     verticalArrangement = Arrangement.spacedBy(14.dp) 
                 ) { 
                     Row( 
@@ -1034,7 +1038,7 @@ class MainActivity : ComponentActivity() {
                             border = BorderStroke(1.dp, BlossomColors.WisteriaViolet.copy(alpha = 0.5f)) 
                         ) { 
                             Text( 
-                                text = "$storyEnergy / 7 Available", 
+                                text = "$storyEnergy / $maxEnergy Available", 
                                 fontSize = 12.sp, 
                                 fontWeight = FontWeight.Bold, 
                                 color = BlossomColors.WisteriaViolet, 
@@ -1043,11 +1047,157 @@ class MainActivity : ComponentActivity() {
                         } 
                     } 
                     
+                    Surface( 
+                        shape = RoundedCornerShape(14.dp), 
+                        color = BlossomColors.SurfaceCard2, 
+                        border = BorderStroke(1.dp, BlossomColors.CardBorder.copy(alpha = 0.6f)), 
+                        modifier = Modifier.fillMaxWidth() 
+                    ) { 
+                        Row( 
+                            modifier = Modifier.padding(12.dp), 
+                            verticalAlignment = Alignment.CenterVertically 
+                        ) { 
+                            Icon( 
+                                Icons.Default.Sync, 
+                                contentDescription = null, 
+                                tint = BlossomColors.WisteriaViolet, 
+                                modifier = Modifier.size(18.dp) 
+                            ) 
+                            Spacer(modifier = Modifier.width(8.dp)) 
+                            Text( 
+                                text = "Passive Recharge: +1 ⚡ every 2 hours\nFull reset to maximum capacity every midnight.", 
+                                fontSize = 12.sp, 
+                                color = BlossomColors.TextSecondary, 
+                                lineHeight = 17.sp 
+                            ) 
+                        } 
+                    } 
+                    
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { 
+                        Row( 
+                            modifier = Modifier.fillMaxWidth(), 
+                            verticalAlignment = Alignment.CenterVertically, 
+                            horizontalArrangement = Arrangement.SpaceBetween 
+                        ) { 
+                            Row(verticalAlignment = Alignment.CenterVertically) { 
+                                Icon( 
+                                    Icons.Default.LocalFireDepartment, 
+                                    contentDescription = null, 
+                                    tint = BlossomColors.SakuraRose, 
+                                    modifier = Modifier.size(16.dp) 
+                                ) 
+                                Spacer(modifier = Modifier.width(6.dp)) 
+                                Text( 
+                                    text = "Streak Energy Cap Scaling", 
+                                    fontSize = 13.5.sp, 
+                                    fontWeight = FontWeight.SemiBold, 
+                                    color = BlossomColors.TextPrimary 
+                                ) 
+                            } 
+                            Text( 
+                                text = "Streak: $streakCount d", 
+                                fontSize = 12.sp, 
+                                fontWeight = FontWeight.Medium, 
+                                color = BlossomColors.SakuraRose 
+                            ) 
+                        } 
+                        
+                        Row( 
+                            modifier = Modifier.fillMaxWidth(), 
+                            horizontalArrangement = Arrangement.spacedBy(6.dp) 
+                        ) { 
+                            val tiers = listOf( 
+                                Triple("Base", 5, streakCount < 3), 
+                                Triple("3d", 6, streakCount in 3..6), 
+                                Triple("7d", 7, streakCount in 7..9), 
+                                Triple("10d", 8, streakCount in 10..13), 
+                                Triple("14d", 9, streakCount >= 14) 
+                            ) 
+                            tiers.forEach { (label, cap, isCurrent) -> 
+                                Surface( 
+                                    modifier = Modifier.weight(1f), 
+                                    shape = RoundedCornerShape(10.dp), 
+                                    color = if (isCurrent) BlossomColors.WisteriaVioletContainer else BlossomColors.SurfaceCard2, 
+                                    border = BorderStroke( 
+                                        width = if (isCurrent) 1.5.dp else 1.dp, 
+                                        color = if (isCurrent) BlossomColors.WisteriaViolet else BlossomColors.CardBorder 
+                                    ) 
+                                ) { 
+                                    Column( 
+                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp), 
+                                        horizontalAlignment = Alignment.CenterHorizontally 
+                                    ) { 
+                                        Text( 
+                                            text = label, 
+                                            fontSize = 11.sp, 
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal, 
+                                            color = if (isCurrent) BlossomColors.WisteriaViolet else BlossomColors.TextMuted 
+                                        ) 
+                                        Spacer(modifier = Modifier.height(2.dp)) 
+                                        Text( 
+                                            text = "$cap ⚡", 
+                                            fontSize = 12.5.sp, 
+                                            fontWeight = FontWeight.Bold, 
+                                            color = if (isCurrent) BlossomColors.BlossomWhite else BlossomColors.TextSecondary 
+                                        ) 
+                                    } 
+                                } 
+                            } 
+                        } 
+                    } 
+                    
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { 
+                        Text( 
+                            text = "Story Chain Continuation Costs", 
+                            fontSize = 13.5.sp, 
+                            fontWeight = FontWeight.SemiBold, 
+                            color = BlossomColors.TextPrimary 
+                        ) 
+                        
+                        Row( 
+                            modifier = Modifier.fillMaxWidth(), 
+                            horizontalArrangement = Arrangement.spacedBy(6.dp) 
+                        ) { 
+                            val costs = listOf( 
+                                "Part 2" to "1 ⚡", 
+                                "Part 3" to "2 ⚡", 
+                                "Part 4" to "2 ⚡", 
+                                "Part 5" to "3 ⚡" 
+                            ) 
+                            costs.forEach { (part, cost) -> 
+                                Surface( 
+                                    modifier = Modifier.weight(1f), 
+                                    shape = RoundedCornerShape(10.dp), 
+                                    color = BlossomColors.SurfaceCard2, 
+                                    border = BorderStroke(1.dp, BlossomColors.CardBorder) 
+                                ) { 
+                                    Column( 
+                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp), 
+                                        horizontalAlignment = Alignment.CenterHorizontally 
+                                    ) { 
+                                        Text( 
+                                            text = part, 
+                                            fontSize = 11.sp, 
+                                            color = BlossomColors.TextMuted 
+                                        ) 
+                                        Spacer(modifier = Modifier.height(2.dp)) 
+                                        Text( 
+                                            text = cost, 
+                                            fontSize = 12.5.sp, 
+                                            fontWeight = FontWeight.Bold, 
+                                            color = BlossomColors.WisteriaViolet 
+                                        ) 
+                                    } 
+                                } 
+                            } 
+                        } 
+                    } 
+                    
                     Text( 
-                        text = "You have 7 daily story energy points. Each new AI story you generate consumes 1 energy point.\n\nEnergy automatically replenishes back to 7 every day at midnight, giving you fresh story reading daily!", 
-                        fontSize = 13.sp, 
+                        text = "Forge new stories and continue cliffhanger story chains up to 3–5 episodes. Keep building your daily streak to increase your maximum energy reserve!", 
+                        fontSize = 12.5.sp, 
                         color = BlossomColors.TextSecondary, 
-                        lineHeight = 20.sp 
+                        lineHeight = 18.sp 
                     ) 
                     
                     Button( 
@@ -1242,6 +1392,8 @@ class MainActivity : ComponentActivity() {
                 if (showEnergyInfoDialog) { 
                     DailyEnergyInfoDialog( 
                         storyEnergy = storyEnergy, 
+                        maxEnergy = prefs.maxStoryEnergy, 
+                        streakCount = streakCount, 
                         onDismiss = { showEnergyInfoDialog = false } 
                     ) 
                 } 

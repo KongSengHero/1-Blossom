@@ -59,7 +59,8 @@ class GeminiStoryService {
             "" 
         } 
         
-        val prompt = buildJlptStoryPrompt(jlptLevel, wordPromptList, theme, topic, storyLength, questionsCount) 
+        val maxChainParts = (3..5).random() 
+        val prompt = buildJlptStoryPrompt(jlptLevel, wordPromptList, theme, topic, storyLength, questionsCount, maxChainParts) 
         
         val targetWordItems = selectedWords.map { 
             StoryWordItem( 
@@ -78,12 +79,83 @@ class GeminiStoryService {
                 targetWords = selectedWords.map { it.displayWord }, 
                 targetWordsData = targetWordItems, 
                 theme = theme, 
-                topic = topic 
+                topic = topic, 
+                partNumber = 1, 
+                maxChainParts = maxChainParts 
             ) 
             Result.success(story) 
         } catch (e: Exception) { 
             val errorDetails = e.message ?: "Unknown error" 
             val userMsg = "Model '$preferredModel' failed: $errorDetails\nPlease tap the model selector above to switch to another model (e.g. Gemini 3.5 Flash-Lite or Gemini 3.8 Flash)." 
+            Result.failure(IOException(userMsg, e)) 
+        } 
+    } 
+    
+    suspend fun continueStoryChain( 
+        apiKey: String, 
+        previousStory: GeneratedStory, 
+        vocabularyList: List<AnkiVocabularyItem> = emptyList(), 
+        preferredModel: String = "gemini-2.5-flash", 
+        storyLength: String = "Medium (300 words)", 
+        questionsCount: Int = 3 
+    ): Result<GeneratedStory> = withContext(Dispatchers.IO) { 
+        if (apiKey.isBlank()) { 
+            return@withContext Result.failure(IllegalArgumentException("Gemini API key is required")) 
+        } 
+        val nextPartNumber = previousStory.partNumber + 1 
+        val maxChainParts = previousStory.maxChainParts 
+        
+        val selectedWords = if (vocabularyList.isNotEmpty()) { 
+            vocabularyList.shuffled().take(12) 
+        } else { 
+            emptyList() 
+        } 
+        val wordPromptList = if (selectedWords.isNotEmpty()) { 
+            selectedWords.joinToString(", ") { item -> 
+                val word = item.displayWord 
+                val reading = if (item.reading.isNotBlank() && item.reading != word) " (読み: ${item.reading})" else "" 
+                val contextMeaning = if (item.meaning.isNotBlank()) " {reference: ${item.meaning.take(35)}}" else "" 
+                "$word$reading$contextMeaning" 
+            } 
+        } else { 
+            "" 
+        } 
+        
+        val prompt = buildChainContinuationPrompt( 
+            previousStory = previousStory, 
+            nextPartNumber = nextPartNumber, 
+            maxChainParts = maxChainParts, 
+            wordPromptList = wordPromptList, 
+            storyLength = storyLength, 
+            questionsCount = questionsCount 
+        ) 
+        
+        val targetWordItems = selectedWords.map { 
+            StoryWordItem( 
+                kanji = it.kanji.ifBlank { it.reading }, 
+                reading = it.reading, 
+                meaning = it.meaning 
+            ) 
+        } 
+        
+        try { 
+            val story = callGeminiApi( 
+                apiKey = apiKey, 
+                model = preferredModel, 
+                prompt = prompt, 
+                jlptLevel = previousStory.jlptLevel, 
+                targetWords = selectedWords.map { it.displayWord }, 
+                targetWordsData = targetWordItems, 
+                theme = previousStory.theme, 
+                topic = previousStory.topic, 
+                chainId = previousStory.chainId, 
+                partNumber = nextPartNumber, 
+                maxChainParts = maxChainParts 
+            ) 
+            Result.success(story) 
+        } catch (e: Exception) { 
+            val errorDetails = e.message ?: "Unknown error" 
+            val userMsg = "Model '$preferredModel' failed: $errorDetails\nPlease switch to another model." 
             Result.failure(IOException(userMsg, e)) 
         } 
     } 
@@ -96,7 +168,10 @@ class GeminiStoryService {
         targetWords: List<String>, 
         targetWordsData: List<StoryWordItem> = emptyList(), 
         theme: String? = null, 
-        topic: String? = null 
+        topic: String? = null, 
+        chainId: String? = null, 
+        partNumber: Int = 1, 
+        maxChainParts: Int = 3 
     ): GeneratedStory { 
         val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey" 
         
@@ -160,7 +235,7 @@ class GeminiStoryService {
             throw IOException("Story text was empty") 
         } 
         
-        return parseStoryResponse(rawText, jlptLevel, targetWords, targetWordsData, theme, topic) 
+        return parseStoryResponse(rawText, jlptLevel, targetWords, targetWordsData, theme, topic, chainId, partNumber, maxChainParts) 
     } 
     
     internal fun parseStoryResponse( 
@@ -169,7 +244,10 @@ class GeminiStoryService {
         targetWords: List<String>, 
         targetWordsData: List<StoryWordItem> = emptyList(), 
         theme: String? = null, 
-        topic: String? = null 
+        topic: String? = null, 
+        chainId: String? = null, 
+        partNumber: Int = 1, 
+        maxChainParts: Int = 3 
     ): GeneratedStory { 
         val clean = cleanJsonString(rawText) 
         return try { 
@@ -177,6 +255,8 @@ class GeminiStoryService {
             val title = json.optString("title", "日本語の物語 ($jlptLevel)").ifBlank { "日本語の物語 ($jlptLevel)" } 
             val storyContent = json.optString("storyJapanese", "").ifBlank { json.optString("content", rawText) } 
             val furiganaContent = json.optString("storyFurigana", "").ifBlank { null } 
+            val isCliffhanger = json.optBoolean("isCliffhanger", false) 
+            val isChainComplete = json.optBoolean("isChainComplete", partNumber >= maxChainParts) 
             
             val storyWordsArray = json.optJSONArray("storyWords") 
             val storyWordsList = mutableListOf<StoryWordItem>() 
@@ -224,8 +304,9 @@ class GeminiStoryService {
                 } 
             } 
             
+            val objId = UUID.randomUUID().toString() 
             GeneratedStory( 
-                id = UUID.randomUUID().toString(), 
+                id = objId, 
                 title = title, 
                 content = storyContent, 
                 furiganaContent = furiganaContent, 
@@ -236,7 +317,12 @@ class GeminiStoryService {
                 storyWords = storyWordsList, 
                 questions = questions, 
                 theme = theme, 
-                topic = topic 
+                topic = topic, 
+                chainId = chainId ?: objId, 
+                partNumber = partNumber, 
+                maxChainParts = maxChainParts, 
+                isCliffhanger = isCliffhanger, 
+                isChainComplete = isChainComplete 
             ) 
         } catch (e: Exception) { 
             var title = "日本語の物語 ($jlptLevel)" 
@@ -249,8 +335,9 @@ class GeminiStoryService {
                     body = lines.drop(1).joinToString("\n").trim() 
                 } 
             } 
+            val objId = UUID.randomUUID().toString() 
             GeneratedStory( 
-                id = UUID.randomUUID().toString(), 
+                id = objId, 
                 title = title, 
                 content = body, 
                 jlptLevel = jlptLevel, 
@@ -260,7 +347,12 @@ class GeminiStoryService {
                 storyWords = emptyList(), 
                 questions = emptyList(), 
                 theme = theme, 
-                topic = topic 
+                topic = topic, 
+                chainId = chainId ?: objId, 
+                partNumber = partNumber, 
+                maxChainParts = maxChainParts, 
+                isCliffhanger = false, 
+                isChainComplete = (partNumber >= maxChainParts) 
             ) 
         } 
     } 
@@ -284,7 +376,8 @@ class GeminiStoryService {
         theme: String? = null, 
         topic: String? = null, 
         storyLength: String = "Medium", 
-        questionsCount: Int = 3 
+        questionsCount: Int = 3, 
+        maxChainParts: Int = 3 
     ): String { 
         val targetQuestions = questionsCount.coerceIn(3, 5) 
         val levelRules = when (jlptLevel) { 
@@ -383,7 +476,8 @@ class GeminiStoryService {
             "[JLPT Level Calibration]\n$levelRules", 
             themeSection.takeIf { it.isNotBlank() }, 
             vocabSection, 
-            quizSection 
+            quizSection, 
+            "[Episodic Continuation & Cliffhanger]\nThis is Part 1 of an episodic story (up to $maxChainParts chapters). There is a 50% probability to end this chapter on an intriguing, suspenseful cliffhanger hook. Return \"isCliffhanger\": true/false accordingly, and \"isChainComplete\": false." 
         ).joinToString("\n\n") 
         
         return """
@@ -415,16 +509,117 @@ class GeminiStoryService {
                   "meaning": "English meaning"
                 }
               ],
-              "questions": [
-                {
-                  "id": 1,
-                  "questionText": "Question in Japanese (e.g., 本文の内容と合っているものはどれか)",
-                  "options": ["選択肢1", "選択肢2", "選択肢3", "選択肢4"],
-                  "correctOptionIndex": 0,
-                  "explanation": "Explanation citing story context and clarifying why distractors are traps"
-                }
-              ]
+              "isCliffhanger": false, 
+              "isChainComplete": false, 
+              "questions": [ 
+                { 
+                  "id": 1, 
+                  "questionText": "Question in Japanese (e.g., 本文の内容と合っているものはどれか)", 
+                  "options": ["選択肢1", "選択肢2", "選択肢3", "選択肢4"], 
+                  "correctOptionIndex": 0, 
+                  "explanation": "Explanation citing story context and clarifying why distractors are traps" 
+                } 
+              ] 
+            } 
+        """.trimIndent() 
+    } 
+    
+    fun buildChainContinuationPrompt( 
+        previousStory: GeneratedStory, 
+        nextPartNumber: Int, 
+        maxChainParts: Int, 
+        wordPromptList: String, 
+        storyLength: String = "Medium", 
+        questionsCount: Int = 3 
+    ): String { 
+        val isFinale = (nextPartNumber >= maxChainParts) 
+        val targetQuestions = questionsCount.coerceIn(3, 5) 
+        val lengthRange = when (storyLength.lowercase()) { 
+            "short" -> "around 100-150 words" 
+            "long" -> "around 400-500 words" 
+            else -> "around 200-300 words" 
+        } 
+        val levelRules = when (previousStory.jlptLevel) { 
+            "N5" -> "Strictly JLPT N5: Use elementary ~です/~ます forms and basic particles." 
+            "N4" -> "Strictly JLPT N4: Use compound sentences, ~て-forms, and ~たら conditions." 
+            "N3" -> "Strictly JLPT N3: Use natural everyday storytelling and intermediate grammar." 
+            "N2" -> "Strictly JLPT N2: Use nuanced narrative prose and pre-advanced vocabulary." 
+            "N1" -> "Strictly JLPT N1: Use literary and sophisticated Japanese expression." 
+            else -> "Use natural Japanese suitable for JLPT ${previousStory.jlptLevel}." 
+        } 
+        val cliffhangerInstruction = if (isFinale) { 
+            """
+            [FINAL CHAPTER RESOLUTION MANDATE]
+            This is Part $nextPartNumber of $maxChainParts (The Final Chapter).
+            You MUST bring all plot threads to a definitive, emotionally satisfying conclusion.
+            DO NOT end on a cliffhanger. In your JSON response, set "isCliffhanger": false and "isChainComplete": true.
+            """.trimIndent() 
+        } else { 
+            """
+            [EPISODIC CHAPTER & CLIFFHANGER INSTRUCTION]
+            This is Part $nextPartNumber of $maxChainParts.
+            Directly continue the narrative from where Part ${previousStory.partNumber} left off.
+            Resolve the immediate preceding situation, then introduce a new story development.
+            There is a 50% probability to end this chapter on an intense cliffhanger, mystery, or sudden hook.
+            In your JSON response:
+            If you end on a cliffhanger hook, set "isCliffhanger": true and "isChainComplete": false.
+            Otherwise set "isCliffhanger": false and "isChainComplete": false.
+            """.trimIndent() 
+        } 
+        val vocabSection = if (wordPromptList.isNotBlank()) { 
+            """
+            [Target Vocabulary from Learner's Flashcards to Naturally Integrate]
+            The learner studied these words:
+            $wordPromptList
+            Incorporate them strictly as natural Japanese text in the story.
+            """.trimIndent() 
+        } else { 
+            """
+            [Target Vocabulary]
+            Freely choose natural Japanese vocabulary strictly appropriate for JLPT ${previousStory.jlptLevel}.
+            """.trimIndent() 
+        } 
+        
+        return """
+        You are an expert Japanese storyteller.
+        Continue the story arc "${previousStory.title}".
+        Length requirement: $lengthRange.
+        
+        [Previous Chapter Context]
+        Title: ${previousStory.title} (Part ${previousStory.partNumber})
+        Ending Context:
+        ${previousStory.content.takeLast(400)}
+        
+        $levelRules
+        $cliffhangerInstruction
+        $vocabSection
+        Create exactly $targetQuestions multiple-choice reading comprehension questions.
+        
+        CRITICAL OUTPUT FORMAT:
+        Output strictly valid JSON with this schema (no markdown formatting, no code blocks):
+        {
+          "title": "${previousStory.title.replace(Regex(" - Part \\d+"), "")} - Part $nextPartNumber",
+          "storyJapanese": "Full continuing Japanese text for Part $nextPartNumber",
+          "storyFurigana": "Same text with furigana ruby brackets e.g. 友[とも]達[だち]",
+          "isCliffhanger": true,
+          "isChainComplete": false,
+          "storyWords": [
+            {
+              "kanji": "単語",
+              "reading": "たんご",
+              "meaning": "word"
             }
+          ],
+          "questions": [
+            {
+              "id": 1,
+              "questionText": "Question in Japanese",
+              "options": ["選択肢1", "選択肢2", "選択肢3", "選択肢4"],
+              "correctOptionIndex": 0,
+              "explanation": "Explanation in English"
+            }
+          ]
+        }
         """.trimIndent() 
     } 
 } 

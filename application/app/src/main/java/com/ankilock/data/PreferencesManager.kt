@@ -382,30 +382,67 @@ class PreferencesManager(context: Context) {
         } 
     } 
     
+    val maxStoryEnergy: Int 
+        get() = calculateMaxEnergyForStreak(dailyStreakCount) 
+        
+    fun getStoryContinuationCost(nextPartNumber: Int): Int { 
+        return calculateContinuationCost(nextPartNumber) 
+    } 
+    
+    var lastEnergyRechargeTimestamp: Long 
+        get() = prefs.getLong(KEY_LAST_ENERGY_RECHARGE_TIMESTAMP, System.currentTimeMillis()) 
+        set(value) = prefs.edit().putLong(KEY_LAST_ENERGY_RECHARGE_TIMESTAMP, value).apply() 
+        
     var storyDailyEnergyRemaining: Int 
         get() { 
             checkAndResetDailyEnergy() 
-            return prefs.getInt(KEY_DAILY_STORY_ENERGY_REMAINING, MAX_DAILY_STORY_ENERGY) 
+            return prefs.getInt(KEY_DAILY_STORY_ENERGY_REMAINING, maxStoryEnergy) 
         } 
         set(value) = prefs.edit().putInt(KEY_DAILY_STORY_ENERGY_REMAINING, value).apply() 
     
     fun checkAndResetDailyEnergy() { 
         val today = getTodayDateString() 
         val recordedDate = prefs.getString(KEY_DAILY_STORY_ENERGY_DATE, "") ?: "" 
+        val maxCap = maxStoryEnergy 
+        val now = System.currentTimeMillis() 
         if (recordedDate != today) { 
             prefs.edit() 
                 .putString(KEY_DAILY_STORY_ENERGY_DATE, today) 
-                .putInt(KEY_DAILY_STORY_ENERGY_REMAINING, MAX_DAILY_STORY_ENERGY) 
+                .putInt(KEY_DAILY_STORY_ENERGY_REMAINING, maxCap) 
+                .putLong(KEY_LAST_ENERGY_RECHARGE_TIMESTAMP, now) 
                 .apply() 
+        } else { 
+            val current = prefs.getInt(KEY_DAILY_STORY_ENERGY_REMAINING, maxCap) 
+            if (current < maxCap) 
+            { 
+                val lastTime = lastEnergyRechargeTimestamp 
+                val elapsed = now - lastTime 
+                val units = (elapsed / TWO_HOURS_MILLIS).toInt() 
+                if (units > 0) { 
+                    val newRemaining = minOf(maxCap, current + units) 
+                    val newTimestamp = lastTime + (units * TWO_HOURS_MILLIS) 
+                    prefs.edit() 
+                        .putInt(KEY_DAILY_STORY_ENERGY_REMAINING, newRemaining) 
+                        .putLong(KEY_LAST_ENERGY_RECHARGE_TIMESTAMP, newTimestamp) 
+                        .apply() 
+                } 
+            } else { 
+                lastEnergyRechargeTimestamp = now 
+            } 
         } 
     } 
     
-    fun consumeDailyStoryEnergy(): Boolean { 
+    fun consumeStoryEnergy(cost: Int): Boolean { 
         checkAndResetDailyEnergy() 
         val current = storyDailyEnergyRemaining 
-        if (current <= 0) return false 
-        storyDailyEnergyRemaining = current - 1 
+        if (current < cost) return false 
+        storyDailyEnergyRemaining = current - cost 
+        lastEnergyRechargeTimestamp = System.currentTimeMillis() 
         return true 
+    } 
+    
+    fun consumeDailyStoryEnergy(): Boolean { 
+        return consumeStoryEnergy(1) 
     } 
     
     var storyLanguage: String 
@@ -996,6 +1033,27 @@ class PreferencesManager(context: Context) {
         private const val KEY_DAILY_STORY_ENERGY_DATE = "daily_story_energy_date" 
         private const val KEY_DAILY_STORY_ENERGY_REMAINING = "daily_story_energy_remaining" 
         const val MAX_DAILY_STORY_ENERGY = 7 
+        const val KEY_LAST_ENERGY_RECHARGE_TIMESTAMP = "last_energy_recharge_timestamp" 
+        const val TWO_HOURS_MILLIS = 2 * 60 * 60 * 1000L 
+        
+        fun calculateMaxEnergyForStreak(streak: Int): Int { 
+            return when { 
+                streak >= 14 -> 9 
+                streak >= 10 -> 8 
+                streak >= 7 -> 7 
+                streak >= 3 -> 6 
+                else -> 5 
+            } 
+        } 
+        
+        fun calculateContinuationCost(partNumber: Int): Int { 
+            return when (partNumber) { 
+                1, 2 -> 1 
+                3, 4 -> 2 
+                5 -> 3 
+                else -> 3 
+            } 
+        } 
         private const val KEY_STORY_LANGUAGE = "story_language" 
         private const val KEY_STORY_PAGE_PREFIX = "story_page_" 
         private const val KEY_STORY_FRACTION_PREFIX = "story_fraction_" 

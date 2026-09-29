@@ -44,7 +44,12 @@ data class GeneratedStory(
     val topic: String? = null, 
     val isPinned: Boolean = false, 
     val quizScore: Int? = null, 
-    val isPassed: Boolean = false 
+    val isPassed: Boolean = false, 
+    val chainId: String = id, 
+    val partNumber: Int = 1, 
+    val maxChainParts: Int = 3, 
+    val isCliffhanger: Boolean = false, 
+    val isChainComplete: Boolean = false 
 ) 
 
 data class CardModel( 

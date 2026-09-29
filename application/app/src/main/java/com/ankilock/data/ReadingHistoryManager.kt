@@ -91,6 +91,11 @@ class ReadingHistoryManager(private val context: Context) {
                 val isPassed = obj.optBoolean("isPassed", false) 
                 
                 val furiganaContent = obj.optString("furiganaContent", "").ifBlank { null } 
+                val chainId = obj.optString("chainId", obj.optString("id", "")) 
+                val partNumber = obj.optInt("partNumber", 1) 
+                val maxChainParts = obj.optInt("maxChainParts", 3) 
+                val isCliffhanger = obj.optBoolean("isCliffhanger", false) 
+                val isChainComplete = obj.optBoolean("isChainComplete", false) 
                 
                 list.add( 
                     GeneratedStory( 
@@ -108,7 +113,12 @@ class ReadingHistoryManager(private val context: Context) {
                         topic = topic, 
                         isPinned = isPinned, 
                         quizScore = quizScore, 
-                        isPassed = isPassed 
+                        isPassed = isPassed, 
+                        chainId = chainId, 
+                        partNumber = partNumber, 
+                        maxChainParts = maxChainParts, 
+                        isCliffhanger = isCliffhanger, 
+                        isChainComplete = isChainComplete 
                     ) 
                 ) 
             } 
@@ -148,6 +158,38 @@ class ReadingHistoryManager(private val context: Context) {
         try { 
             File(context.filesDir, "stories/images/$id").deleteRecursively() 
         } catch (_: Exception) { 
+        } 
+    } 
+    
+    fun deleteStoryChain(chainId: String) { 
+        val toDelete = getStories().filter { it.chainId == chainId } 
+        val remaining = getStories().filterNot { it.chainId == chainId } 
+        saveList(remaining) 
+        toDelete.forEach { s -> 
+            FishAudioService.deleteAudioForStory(context, s.id) 
+            try { 
+                File(context.filesDir, "stories/images/${s.id}").deleteRecursively() 
+            } catch (_: Exception) { 
+            } 
+        } 
+    } 
+    
+    fun deleteStoryFromPartOnwards(chainId: String, fromPartNumber: Int) { 
+        val toDelete = getStories().filter { it.chainId == chainId && it.partNumber >= fromPartNumber } 
+        val remaining = getStories().map { s -> 
+            if (s.chainId == chainId && s.partNumber == fromPartNumber - 1) { 
+                s.copy(isChainComplete = false) 
+            } else { 
+                s 
+            } 
+        }.filterNot { it.chainId == chainId && it.partNumber >= fromPartNumber } 
+        saveList(remaining) 
+        toDelete.forEach { s -> 
+            FishAudioService.deleteAudioForStory(context, s.id) 
+            try { 
+                File(context.filesDir, "stories/images/${s.id}").deleteRecursively() 
+            } catch (_: Exception) { 
+            } 
         } 
     } 
     
@@ -309,6 +351,11 @@ class ReadingHistoryManager(private val context: Context) {
                     put("isPinned", story.isPinned) 
                     if (story.quizScore != null) put("quizScore", story.quizScore) 
                     put("isPassed", story.isPassed) 
+                    put("chainId", story.chainId) 
+                    put("partNumber", story.partNumber) 
+                    put("maxChainParts", story.maxChainParts) 
+                    put("isCliffhanger", story.isCliffhanger) 
+                    put("isChainComplete", story.isChainComplete) 
                     
                     if (story.furiganaContent != null) put("furiganaContent", story.furiganaContent) 
                     if (story.theme != null) put("theme", story.theme) 

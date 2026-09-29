@@ -59,6 +59,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DragIndicator
@@ -453,7 +454,7 @@ fun ReadingScreen(
         storyGenerationJob = coroutineScope.launch { 
             try { 
                 if (prefs.storyDailyEnergyRemaining <= 0) { 
-                    generationError = "Daily story energy depleted (0/7). Resets tomorrow!" 
+                    generationError = "Daily story energy depleted (0/${prefs.maxStoryEnergy}). Resets tomorrow!" 
                     return@launch 
                 } 
                 isGeneratingStory = true 
@@ -520,6 +521,79 @@ fun ReadingScreen(
                     onTopBarStatsChanged() 
                 }.onFailure { err -> 
                     generationError = err.message ?: "Failed to generate story" 
+                } 
+            } finally { 
+                isGeneratingStory = false 
+                storyGenerationJob = null 
+            } 
+        } 
+    } 
+    
+    fun executeContinuation() { 
+        val prev = currentStory ?: return 
+        val nextPartNumber = prev.partNumber + 1 
+        val continuationCost = prefs.getStoryContinuationCost(nextPartNumber) 
+        storyGenerationJob?.cancel() 
+        audioSynthesisJob?.cancel() 
+        audioService.stopAudio() 
+        ttsHelper.stop() 
+        isNarrating = false 
+        isAudioPaused = false 
+        activeSentenceIndex = -1 
+        storyGenerationJob = coroutineScope.launch { 
+            try { 
+                if (prefs.storyDailyEnergyRemaining < continuationCost) { 
+                    val msg = "Need $continuationCost Energy to continue (${prefs.storyDailyEnergyRemaining}/${prefs.maxStoryEnergy} available). Recharges in 2 hrs or at midnight!" 
+                    generationError = msg 
+                    return@launch 
+                } 
+                isGeneratingStory = true 
+                generationError = null 
+                
+                val count = prefs.storyConnectingWordsCount 
+                val allWords = vocabSummary?.words ?: emptyList() 
+                val filter = prefs.storyVocabularyFilter 
+                val eligibleVocab = when { 
+                    filter == "all" || filter.isBlank() -> allWords 
+                    filter.equals("suspense", ignoreCase = true) || filter.equals("suspended", ignoreCase = true) -> 
+                        allWords.filter { it.isSuspended || it.state.equals("suspended", ignoreCase = true) || it.state.equals("suspense", ignoreCase = true) } 
+                    else -> 
+                        allWords.filter { !it.isSuspended && it.state.equals(filter, ignoreCase = true) } 
+                } 
+                val words = when { 
+                    count == -1 && eligibleVocab.isNotEmpty() -> eligibleVocab.shuffled() 
+                    count > 0 && eligibleVocab.isNotEmpty() -> eligibleVocab.shuffled().take(count) 
+                    else -> emptyList() 
+                } 
+                val result = storyService.continueStoryChain( 
+                    apiKey = apiKey, 
+                    previousStory = prev, 
+                    vocabularyList = words, 
+                    preferredModel = selectedModel, 
+                    storyLength = prefs.storyLength, 
+                    questionsCount = prefs.storyQuestionsCount 
+                ) 
+                result.onSuccess { continuationStory -> 
+                    val enrichedStory = if (continuationStory.targetWordsData.isEmpty() && words.isNotEmpty()) { 
+                        continuationStory.copy( 
+                            targetWordsData = words.map { 
+                                StoryWordItem( 
+                                    kanji = it.kanji.ifBlank { it.reading }, 
+                                    reading = it.reading, 
+                                    meaning = it.meaning 
+                                ) 
+                            } 
+                        ) 
+                    } else { 
+                        continuationStory 
+                    } 
+                    currentStory = enrichedStory 
+                    historyManager.saveStory(enrichedStory) 
+                    savedStories = historyManager.getStories() 
+                    prefs.consumeStoryEnergy(continuationCost) 
+                    onTopBarStatsChanged() 
+                }.onFailure { err -> 
+                    generationError = err.message ?: "Failed to continue story" 
                 } 
             } finally { 
                 isGeneratingStory = false 
@@ -1890,6 +1964,65 @@ fun ReadingScreen(
             else -> BlossomColors.SakuraRoseLip 
         } 
         
+        val canContinueChain = (currentStory != null && !currentStory!!.isChainComplete && currentStory!!.partNumber < currentStory!!.maxChainParts) 
+        if (canContinueChain) { 
+            val nextPartNumber = (currentStory?.partNumber ?: 1) + 1 
+            val continuationCost = prefs.getStoryContinuationCost(nextPartNumber) 
+            val isCliffhanger = currentStory?.isCliffhanger == true 
+            
+            Squircle3DButton( 
+                onClick = { 
+                    if (apiKey.isBlank()) { 
+                        showApiKeyDialog = true 
+                    } else if (!prefs.hasAcceptedInternetDisclosure) { 
+                        showInternetConsentDialog = true 
+                    } else if (prefs.storyDailyEnergyRemaining < continuationCost) { 
+                        val msg = "Need $continuationCost Energy to continue (${prefs.storyDailyEnergyRemaining}/${prefs.maxStoryEnergy} available). Recharges in 2 hrs or at midnight!" 
+                        generationError = msg 
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() 
+                    } else { 
+                        executeContinuation() 
+                    } 
+                }, 
+                enabled = !isGeneratingStory, 
+                modifier = Modifier 
+                    .fillMaxWidth() 
+                    .height(50.dp), 
+                containerColor = if (isGeneratingStory) BlossomColors.WisteriaViolet.copy(alpha = 0.40f) else BlossomColors.WisteriaViolet, 
+                bevelColor = if (isGeneratingStory) BlossomColors.WisteriaVioletLip.copy(alpha = 0.40f) else BlossomColors.WisteriaVioletLip, 
+                shape = BlossomShapes.SquircleMedium, 
+                depth = 3.dp, 
+                hasSweepingShine = !isLockedWithoutKey && !isGeneratingStory 
+            ) { 
+                Row( 
+                    verticalAlignment = Alignment.CenterVertically, 
+                    horizontalArrangement = Arrangement.Center, 
+                    modifier = Modifier.padding(horizontal = 16.dp) 
+                ) { 
+                    Icon( 
+                        imageVector = if (isCliffhanger) Icons.Filled.Bolt else Icons.AutoMirrored.Filled.MenuBook, 
+                        contentDescription = null, 
+                        tint = BlossomColors.BlossomWhite, 
+                        modifier = Modifier.size(18.dp) 
+                    ) 
+                    Spacer(modifier = Modifier.width(8.dp)) 
+                    Text( 
+                        text = if (isCliffhanger) { 
+                            "⚡ Resolve Cliffhanger • Part $nextPartNumber/${currentStory?.maxChainParts} ($continuationCost ⚡)" 
+                        } else { 
+                            "Continue Story Chain • Part $nextPartNumber/${currentStory?.maxChainParts} ($continuationCost ⚡)" 
+                        }, 
+                        fontWeight = FontWeight.SemiBold, 
+                        fontSize = 15.sp, 
+                        color = BlossomColors.BlossomWhite, 
+                        maxLines = 1, 
+                        softWrap = false 
+                    ) 
+                } 
+            } 
+            Spacer(modifier = Modifier.height(10.dp)) 
+        } 
+        
         Row( 
             modifier = Modifier.fillMaxWidth(), 
             horizontalArrangement = Arrangement.spacedBy(8.dp), 
@@ -1902,7 +2035,7 @@ fun ReadingScreen(
                     } else if (!prefs.hasAcceptedInternetDisclosure) { 
                         showInternetConsentDialog = true 
                     } else if (prefs.storyDailyEnergyRemaining <= 0) { 
-                        generationError = "Daily story energy depleted (0/7). Resets tomorrow!" 
+                        generationError = "Daily story energy depleted (0/${prefs.maxStoryEnergy}). Resets tomorrow!" 
                     } else { 
                         executeGeneration() 
                     } 
@@ -1980,7 +2113,7 @@ fun ReadingScreen(
                                 ) 
                                 Spacer(modifier = Modifier.width(8.dp)) 
                                 Text( 
-                                    text = if (currentStory == null) "Generate $selectedJlpt Story (${prefs.storyDailyEnergyRemaining}/7)" else "Forge New Story (${prefs.storyDailyEnergyRemaining}/7)", 
+                                    text = if (currentStory == null) "Generate $selectedJlpt Story (${prefs.storyDailyEnergyRemaining}/${prefs.maxStoryEnergy})" else "Forge New Story (${prefs.storyDailyEnergyRemaining}/${prefs.maxStoryEnergy})", 
                                     fontWeight = FontWeight.SemiBold, 
                                     fontSize = 15.sp, 
                                     color = BlossomColors.BlossomWhite, 

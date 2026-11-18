@@ -32,7 +32,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
+import com.ankilock.data.BookmarkManager
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.History
@@ -167,13 +170,8 @@ fun JishoScreen(
             results = emptyList() 
             isLoading = false 
             errorMessage = null 
-            return@LaunchedEffect 
+            lastExecutedQuery = "" 
         } 
-        if (query.trim() == lastExecutedQuery) { 
-            return@LaunchedEffect 
-        } 
-        delay(500) 
-        executeSearch(query) 
     } 
     
     LaunchedEffect(initialQuery) { 
@@ -212,11 +210,19 @@ fun JishoScreen(
                     ) 
                 }, 
                 leadingIcon = { 
-                    Icon( 
-                        imageVector = Icons.Default.Search, 
-                        contentDescription = "Search", 
-                        tint = BlossomColors.MatchaSage 
-                    ) 
+                    IconButton( 
+                        onClick = { 
+                            keyboardController?.hide() 
+                            focusManager.clearFocus() 
+                            executeSearch(query) 
+                        } 
+                    ) { 
+                        Icon( 
+                            imageVector = Icons.Default.Search, 
+                            contentDescription = "Search", 
+                            tint = BlossomColors.MatchaSage 
+                        ) 
+                    } 
                 }, 
                 trailingIcon = { 
                     if (query.isNotEmpty()) { 
@@ -750,6 +756,27 @@ private fun JishoWordCard(
                             imageVector = Icons.AutoMirrored.Filled.VolumeUp, 
                             contentDescription = "Speak", 
                             tint = if (isPlaying) BlossomColors.MatchaSage else BlossomColors.TextSecondary.copy(alpha = 0.45f), 
+                            modifier = Modifier.size(18.dp) 
+                        ) 
+                    } 
+                    
+                    IconButton( 
+                        onClick = { 
+                            BookmarkManager.toggleBookmark( 
+                                kanji = word.primaryWord, 
+                                reading = word.primaryReading, 
+                                meaning = word.primaryEnglish, 
+                                sentence = "", 
+                                sourceStoryTitle = "Jisho" 
+                            ) 
+                        }, 
+                        modifier = Modifier.size(34.dp) 
+                    ) { 
+                        val isBookmarked = BookmarkManager.bookmarkedWords.any { it.kanji.trim() == word.primaryWord.trim() } 
+                        Icon( 
+                            imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, 
+                            contentDescription = "Bookmark", 
+                            tint = if (isBookmarked) BlossomColors.WarmAmber else BlossomColors.TextSecondary, 
                             modifier = Modifier.size(18.dp) 
                         ) 
                     } 

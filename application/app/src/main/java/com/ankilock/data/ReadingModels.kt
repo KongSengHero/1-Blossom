@@ -7,7 +7,8 @@ data class AnkiVocabularyItem(
     val reading: String = "", 
     val meaning: String = "", 
     val isSuspended: Boolean = false, 
-    val state: String = "review" 
+    val state: String = "review", 
+    val id: Long = 0L 
 ) { 
     val displayWord: String 
         get() = kanji.ifBlank { reading } 
@@ -19,6 +20,40 @@ data class ReadingVocabularySummary(
     val words: List<AnkiVocabularyItem> = emptyList() 
 ) { 
     val totalCount: Int get() = studiedCount + suspendedCount 
+} 
+
+fun selectPrioritizedVocabulary( 
+    eligibleVocab: List<AnkiVocabularyItem>, 
+    count: Int 
+): List<AnkiVocabularyItem> { 
+    if (eligibleVocab.isEmpty() || count == 0) return emptyList() 
+    val tenPercent = (eligibleVocab.size * 0.10f).let { if (it < 1f) 1 else kotlin.math.round(it).toInt() } 
+    val oldestPool = eligibleVocab.take(tenPercent) 
+    val latestPool = eligibleVocab.takeLast(tenPercent) 
+    val middlePool = if (eligibleVocab.size > tenPercent * 2) { 
+        eligibleVocab.subList(tenPercent, eligibleVocab.size - tenPercent) 
+    } else { 
+        emptyList() 
+    } 
+    if (count == -1) { 
+        return (latestPool.shuffled() + oldestPool.shuffled() + middlePool.shuffled()).distinctBy { it.displayWord } 
+    } 
+    if (eligibleVocab.size <= count) { 
+        return eligibleVocab.shuffled() 
+    } 
+    val selected = mutableListOf<AnkiVocabularyItem>() 
+    val latestQuota = (count + 1) / 2 
+    val oldestQuota = count - latestQuota 
+    val pickedLatest = latestPool.shuffled().take(latestQuota) 
+    selected.addAll(pickedLatest) 
+    val pickedOldest = oldestPool.filter { item -> selected.none { it.displayWord == item.displayWord } }.shuffled().take(oldestQuota) 
+    selected.addAll(pickedOldest) 
+    val remainingNeeded = count - selected.size 
+    if (remainingNeeded > 0) { 
+        val remainingPool = eligibleVocab.filter { item -> selected.none { it.displayWord == item.displayWord } }.shuffled() 
+        selected.addAll(remainingPool.take(remainingNeeded)) 
+    } 
+    return selected.shuffled() 
 } 
 
 data class StoryQuizQuestion( 

@@ -1,6 +1,7 @@
 package com.ankilock.reading
     
 import com.ankilock.data.AnkiVocabularyItem
+import com.ankilock.data.selectPrioritizedVocabulary
 import com.ankilock.data.GeneratedStory
 import com.ankilock.data.PreferencesManager
 import com.ankilock.data.StoryQuizQuestion
@@ -43,7 +44,11 @@ class GeminiStoryService {
         } 
         
         val selectedWords = if (vocabularyList.isNotEmpty()) { 
-            vocabularyList.shuffled().take(12) 
+            if (vocabularyList.size <= 12) { 
+                vocabularyList 
+            } else { 
+                selectPrioritizedVocabulary(vocabularyList, 12) 
+            } 
         } else { 
             emptyList() 
         } 
@@ -106,7 +111,11 @@ class GeminiStoryService {
         val maxChainParts = previousStory.maxChainParts 
         
         val selectedWords = if (vocabularyList.isNotEmpty()) { 
-            vocabularyList.shuffled().take(12) 
+            if (vocabularyList.size <= 12) { 
+                vocabularyList 
+            } else { 
+                selectPrioritizedVocabulary(vocabularyList, 12) 
+            } 
         } else { 
             emptyList() 
         } 

@@ -57,6 +57,10 @@ class PreferencesManager(context: Context) {
         get() = prefs.getLong(KEY_SNOOZE_UNTIL, 0L)
         set(value) = prefs.edit().putLong(KEY_SNOOZE_UNTIL, value).apply()
     
+    var isAppLoadingEnabled: Boolean 
+        get() = prefs.getBoolean(KEY_APP_LOADING_ENABLED, true) 
+        set(value) = prefs.edit().putBoolean(KEY_APP_LOADING_ENABLED, value).apply() 
+    
     var isMusicPlayerStyle: Boolean
         get() = prefs.getBoolean(KEY_MUSIC_PLAYER_STYLE, false)
         set(value) = prefs.edit().putBoolean(KEY_MUSIC_PLAYER_STYLE, value).apply()
@@ -1006,6 +1010,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_TODAY_LEARNED_CARDS_COUNT = "today_learned_cards_count" 
         private const val KEY_TODAY_STORY_COMPLETED = "today_story_completed" 
         private const val KEY_TODAY_PROGRESS_DATE = "today_progress_date" 
+        private const val KEY_APP_LOADING_ENABLED = "app_loading_enabled" 
         private const val KEY_SERVICE_ENABLED = "service_enabled"
         private const val KEY_MUSIC_PLAYER_STYLE = "music_player_style"
         private const val KEY_SELECTED_DECKS = "selected_decks"

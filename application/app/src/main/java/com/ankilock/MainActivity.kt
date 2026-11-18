@@ -80,6 +80,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward 
 import androidx.compose.ui.draw.clip 
 import androidx.compose.ui.window.Dialog 
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -313,11 +314,14 @@ class MainActivity : ComponentActivity() {
         
         setContent { 
             AnkiLockTheme { 
-                var showLoadingOverlay by remember { mutableStateOf(true) } 
-                var isAppLoading by remember { mutableStateOf(true) } 
-                LaunchedEffect(Unit) { 
-                    kotlinx.coroutines.delay(2400) 
-                    isAppLoading = false 
+                val isAppLoadingEnabled = prefs.isAppLoadingEnabled 
+                var showLoadingOverlay by remember { mutableStateOf(isAppLoadingEnabled) } 
+                var isAppLoading by remember { mutableStateOf(isAppLoadingEnabled) } 
+                if (isAppLoadingEnabled) { 
+                    LaunchedEffect(Unit) { 
+                        kotlinx.coroutines.delay(2400) 
+                        isAppLoading = false 
+                    } 
                 } 
                 Box(modifier = Modifier.fillMaxSize()) { 
                     MainContainer() 
@@ -595,12 +599,17 @@ class MainActivity : ComponentActivity() {
             weeksList 
         } 
 
-        Dialog(onDismissRequest = onDismiss) { 
+        Dialog( 
+            onDismissRequest = onDismiss, 
+            properties = DialogProperties(usePlatformDefaultWidth = false) 
+        ) { 
             Card( 
                 shape = RoundedCornerShape(20.dp), 
                 colors = CardDefaults.cardColors(containerColor = BlossomColors.SurfaceCard1), 
                 border = BorderStroke(1.dp, BlossomColors.CardBorder), 
-                modifier = Modifier.fillMaxWidth() 
+                modifier = Modifier 
+                    .fillMaxWidth() 
+                    .padding(horizontal = 16.dp) 
             ) { 
                 Column( 
                     modifier = Modifier.padding(20.dp), 
@@ -615,7 +624,7 @@ class MainActivity : ComponentActivity() {
                             Icon( 
                                 Icons.Default.LocalFireDepartment, 
                                 contentDescription = null, 
-                                tint = if (viewMode == "heatmap") Color(0xFF39D353) else Color(0xFFFF5722), 
+                                tint = Color(0xFFFF5722), 
                                 modifier = Modifier.size(24.dp) 
                             ) 
                             Spacer(modifier = Modifier.width(10.dp)) 
@@ -629,14 +638,14 @@ class MainActivity : ComponentActivity() {
                         
                         Surface( 
                             shape = BlossomShapes.SquircleSmall, 
-                            color = if (viewMode == "heatmap") Color(0xFF0E4429) else Color(0xFF381E17), 
-                            border = BorderStroke(1.dp, (if (viewMode == "heatmap") Color(0xFF39D353) else Color(0xFFFF5722)).copy(alpha = 0.5f)) 
+                            color = Color(0xFF381E17), 
+                            border = BorderStroke(1.dp, Color(0xFFFF5722).copy(alpha = 0.5f)) 
                         ) { 
                             Text( 
                                 text = "$streakCount Days", 
                                 fontSize = 12.sp, 
                                 fontWeight = FontWeight.Bold, 
-                                color = if (viewMode == "heatmap") Color(0xFF39D353) else Color(0xFFFF5722), 
+                                color = Color(0xFFFF5722), 
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp) 
                             ) 
                         } 
@@ -944,12 +953,17 @@ class MainActivity : ComponentActivity() {
         completedStoriesCount: Int, 
         onDismiss: () -> Unit 
     ) { 
-        Dialog(onDismissRequest = onDismiss) { 
+        Dialog( 
+            onDismissRequest = onDismiss, 
+            properties = DialogProperties(usePlatformDefaultWidth = false) 
+        ) { 
             Card( 
                 shape = RoundedCornerShape(20.dp), 
                 colors = CardDefaults.cardColors(containerColor = BlossomColors.SurfaceCard1), 
                 border = BorderStroke(1.dp, BlossomColors.CardBorder), 
-                modifier = Modifier.fillMaxWidth() 
+                modifier = Modifier 
+                    .fillMaxWidth() 
+                    .padding(horizontal = 16.dp) 
             ) { 
                 Column( 
                     modifier = Modifier.padding(22.dp), 
@@ -1041,12 +1055,17 @@ class MainActivity : ComponentActivity() {
             else String.format(java.util.Locale.US, "%02dm %02ds", mins, secs) 
         } 
         
-        Dialog(onDismissRequest = onDismiss) { 
+        Dialog( 
+            onDismissRequest = onDismiss, 
+            properties = DialogProperties(usePlatformDefaultWidth = false) 
+        ) { 
             Card( 
                 shape = RoundedCornerShape(20.dp), 
                 colors = CardDefaults.cardColors(containerColor = BlossomColors.SurfaceCard1), 
                 border = BorderStroke(1.dp, BlossomColors.CardBorder), 
-                modifier = Modifier.fillMaxWidth() 
+                modifier = Modifier 
+                    .fillMaxWidth() 
+                    .padding(horizontal = 16.dp) 
             ) { 
                 Column( 
                     modifier = Modifier 
@@ -1836,6 +1855,7 @@ class MainActivity : ComponentActivity() {
         var showBackgroundsSheet by remember { mutableStateOf(false) } 
         var showDecksSheet by remember { mutableStateOf(false) } 
         var showStyleSheet by remember { mutableStateOf(false) } 
+        var isAppLoadingEnabled by remember { mutableStateOf(prefs.isAppLoadingEnabled) } 
         var isGradingCard by remember { mutableStateOf(false) } 
         
         var activeCard by remember { mutableStateOf(CardSessionManager.currentCard) } 
@@ -2487,6 +2507,65 @@ class MainActivity : ComponentActivity() {
                             prefs.snoozeDurationMinutes = minutes 
                         } 
                     ) 
+                    
+                    Card( 
+                        modifier = Modifier.fillMaxWidth(), 
+                        shape = BlossomShapes.SquircleLarge, 
+                        colors = CardDefaults.cardColors( 
+                            containerColor = BlossomColors.SurfaceCard1 
+                        ), 
+                        border = BorderStroke(1.dp, BlossomColors.CardBorderSubtle) 
+                    ) { 
+                        Row( 
+                            modifier = Modifier 
+                                .fillMaxWidth() 
+                                .padding(18.dp), 
+                            verticalAlignment = Alignment.CenterVertically 
+                        ) { 
+                            Box( 
+                                modifier = Modifier 
+                                    .size(38.dp) 
+                                    .clip(BlossomShapes.SquircleMedium) 
+                                    .background(BlossomColors.SakuraRoseContainer), 
+                                contentAlignment = Alignment.Center 
+                            ) { 
+                                Icon( 
+                                    Icons.Filled.AutoAwesome, 
+                                    contentDescription = null, 
+                                    tint = BlossomColors.SakuraRose, 
+                                    modifier = Modifier.size(19.dp) 
+                                ) 
+                            } 
+                            Spacer(modifier = Modifier.width(14.dp)) 
+                            Column(modifier = Modifier.weight(1f)) { 
+                                Text( 
+                                    "App Loading Screen", 
+                                    fontWeight = FontWeight.SemiBold, 
+                                    fontSize = 15.sp, 
+                                    color = BlossomColors.TextPrimary 
+                                ) 
+                                Spacer(modifier = Modifier.height(2.dp)) 
+                                Text( 
+                                    "Display loading animation on startup", 
+                                    fontSize = 12.sp, 
+                                    color = BlossomColors.TextSecondary 
+                                ) 
+                            } 
+                            Switch( 
+                                checked = isAppLoadingEnabled, 
+                                onCheckedChange = { checked -> 
+                                    isAppLoadingEnabled = checked 
+                                    prefs.isAppLoadingEnabled = checked 
+                                }, 
+                                colors = SwitchDefaults.colors( 
+                                    checkedTrackColor = BlossomColors.SlateBlue, 
+                                    checkedThumbColor = Color.White, 
+                                    uncheckedTrackColor = BlossomColors.SurfaceCard3, 
+                                    uncheckedThumbColor = BlossomColors.TextMuted 
+                                ) 
+                            ) 
+                        } 
+                    } 
                 } 
             } 
         } 

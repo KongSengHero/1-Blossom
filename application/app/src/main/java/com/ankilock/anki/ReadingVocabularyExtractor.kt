@@ -151,7 +151,7 @@ class ReadingVocabularyExtractor(private val context: Context) {
 
         studiedMap.keys.forEach { suspendedMap.remove(it) } 
 
-        val allWords = (studiedMap.values + suspendedMap.values).sortedBy { it.displayWord } 
+        val allWords = (studiedMap.values + suspendedMap.values).sortedBy { it.id } 
         Log.d(TAG, "Extracted ${studiedMap.size} studied words and ${suspendedMap.size} suspended cards (total: ${allWords.size})") 
 
         ReadingVocabularySummary( 
@@ -180,10 +180,12 @@ class ReadingVocabularyExtractor(private val context: Context) {
             ) 
 
             cursor?.let { c -> 
+                val idIdx = c.getColumnIndex(AnkiDroidContract.Notes._ID) 
                 val midIdx = c.getColumnIndex(AnkiDroidContract.Notes.MID) 
                 val fldsIdx = c.getColumnIndex(AnkiDroidContract.Notes.FLDS) 
 
                 while (c.moveToNext()) { 
+                    val noteId = if (idIdx != -1) c.getLong(idIdx) else 0L 
                     val modelId = if (midIdx != -1) c.getLong(midIdx) else -1L 
                     val rawFields = if (fldsIdx != -1) c.getString(fldsIdx) ?: "" else "" 
 
@@ -203,7 +205,8 @@ class ReadingVocabularyExtractor(private val context: Context) {
                                     reading = parsed.kana, 
                                     meaning = parsed.meaning, 
                                     isSuspended = isSuspended, 
-                                    state = state 
+                                    state = state, 
+                                    id = noteId 
                                 ) 
                                 outMap[item.displayWord] = item 
                             } 
@@ -314,7 +317,8 @@ class ReadingVocabularyExtractor(private val context: Context) {
                                 reading = parsed.kana, 
                                 meaning = parsed.meaning, 
                                 isSuspended = isSuspended, 
-                                state = state 
+                                state = state, 
+                                id = noteId 
                             ) 
                         } 
                     } 

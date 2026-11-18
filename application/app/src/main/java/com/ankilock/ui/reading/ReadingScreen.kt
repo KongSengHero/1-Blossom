@@ -179,6 +179,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ankilock.anki.ReadingVocabularyExtractor
 import com.ankilock.data.AnkiVocabularyItem
+import com.ankilock.data.selectPrioritizedVocabulary
 import com.ankilock.data.GeneratedStory
 import com.ankilock.data.PreferencesManager
 import com.ankilock.data.ReadingHistoryManager
@@ -786,11 +787,7 @@ fun ReadingScreen(
                     else -> 
                         allWords.filter { !it.isSuspended && it.state.equals(filter, ignoreCase = true) } 
                 } 
-                val words = when { 
-                    count == -1 && eligibleVocab.isNotEmpty() -> eligibleVocab.shuffled() 
-                    count > 0 && eligibleVocab.isNotEmpty() -> eligibleVocab.shuffled().take(count) 
-                    else -> emptyList() 
-                } 
+                val words = selectPrioritizedVocabulary(eligibleVocab, count) 
                 val result = storyService.generateStory( 
                     apiKey = apiKey, 
                     jlptLevel = selectedJlpt, 
@@ -861,11 +858,7 @@ fun ReadingScreen(
                     else -> 
                         allWords.filter { !it.isSuspended && it.state.equals(filter, ignoreCase = true) } 
                 } 
-                val words = when { 
-                    count == -1 && eligibleVocab.isNotEmpty() -> eligibleVocab.shuffled() 
-                    count > 0 && eligibleVocab.isNotEmpty() -> eligibleVocab.shuffled().take(count) 
-                    else -> emptyList() 
-                } 
+                val words = selectPrioritizedVocabulary(eligibleVocab, count) 
                 val result = storyService.continueStoryChain( 
                     apiKey = apiKey, 
                     previousStory = prev, 
